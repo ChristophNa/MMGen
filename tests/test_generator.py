@@ -1,9 +1,11 @@
 import pytest
 import os
 import trimesh
-from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams, GradingParams
+import numpy as np
+from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams
 from mmgen.tpms_types import TPMSType
 from mmgen.generator import TPMSGenerator
+from mmgen import grading
 
 def test_basic_gyroid(tmp_path):
     """Generates a simple Gyroid block."""
@@ -13,9 +15,8 @@ def test_basic_gyroid(tmp_path):
         domain=DomainConfig(length=30, width=30, height=30),
         output_name=str(output_name)
     )
-    gen = TPMSGenerator(config)
-    # Mocking the run method's export to avoid writing to actual disk or just use tmp_path
-    # The run method exports to {output_name}.stl
+    # Pass constant thickness
+    gen = TPMSGenerator(config, thickness=0.5)
     
     # We can run the generator
     mesh = gen.run()
@@ -34,10 +35,13 @@ def test_graded_schwarz_p(tmp_path):
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=30j),
         domain=DomainConfig(length=50, width=20, height=20),
-        grading=GradingParams(t0=0.2, tl=0.8),
         output_name=str(output_name)
     )
-    gen = TPMSGenerator(config)
+    
+    # Linear grading
+    grading_func = grading.linear_x(t0=0.2, tl=0.8, x0=0.0, xl=50.0)
+    
+    gen = TPMSGenerator(config, thickness=grading_func)
     mesh = gen.run()
     
     assert isinstance(mesh, trimesh.Trimesh)
@@ -63,10 +67,48 @@ def test_lidinoid_with_benchy(tmp_path):
         target_geometry=str(dummy_target),
         output_name=str(output_name)
     )
-    gen = TPMSGenerator(config)
+    # constant thickness
+    gen = TPMSGenerator(config, thickness=0.5)
     mesh = gen.run()
     
     assert isinstance(mesh, trimesh.Trimesh)
     assert not mesh.is_empty
     expected_file = output_name.with_suffix(".stl")
     assert expected_file.exists()
+
+def test_custom_grading_function(tmp_path):
+    """Test passing a custom lambda as grading function."""
+    output_name = tmp_path / "custom_grading"
+    config = GeneratorConfig(
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20j),
+        domain=DomainConfig(length=20, width=20, height=20),
+        output_name=str(output_name)
+    )
+    
+    # Custom radial grading: t = 0.2 at center, 0.8 at radius 10
+    # Center is (10, 10, 10) for a 20x20x20 box centered at 0? 
+    # Wait, domain logic in generator:
+    # box creates grid from 0 to L. So center is (10, 10, 10).
+    
+    custom_grading = grading.radial(t_center=0.2, t_outer=0.8, center=(10, 10, 10), radius=10.0)
+    
+    gen = TPMSGenerator(config, thickness=custom_grading)
+    mesh = gen.run()
+    
+    assert isinstance(mesh, trimesh.Trimesh)
+    assert not mesh.is_empty
+
+def test_missing_thickness_error(tmp_path):
+    """Ensure ValueError is raised if thickness is not provided."""
+    config = GeneratorConfig(
+        tpms=TPMSParams(type=TPMSType.GYROID),
+        domain=DomainConfig(length=10, width=10, height=10)
+    )
+    with pytest.raises(TypeError): # TypeError because argument is missing
+        TPMSGenerator(config)
+
+def test_invalid_thickness_type(tmp_path):
+    """Ensure ValueError is raised if thickness is invalid type."""
+    config = GeneratorConfig()
+    with pytest.raises(ValueError):
+        TPMSGenerator(config, thickness="invalid")

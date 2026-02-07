@@ -1,19 +1,24 @@
 import numpy as np
 import trimesh
 from skimage import measure
-from .config import GeneratorConfig, GradingParams
+from typing import Union, Callable
+from .config import GeneratorConfig
 from .tpms_types import TPMS_REGISTRY
-from .utils import pycork_intersection
+from .utils import mesh_intersection, mesh_union
+from .grading import constant, GradingFunc
 
 class TPMSGenerator:
-    def __init__(self, config: GeneratorConfig):
+    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingFunc]):
         self.config = config
         self.domain = config.domain
         self.tpms_params = config.tpms
         
-        # Adjust grading parameters if xl is not set
-        if self.config.grading and self.config.grading.xl is None:
-            self.config.grading.xl = self.domain.length
+        if isinstance(thickness, (float, int)):
+            self.grading_func = constant(float(thickness))
+        elif callable(thickness):
+            self.grading_func = thickness
+        else:
+            raise ValueError("thickness must be a float or a callable function")
             
     def generate_grid(self):
         """Generates the 3D grid based on domain and resolution."""
@@ -40,21 +45,12 @@ class TPMSGenerator:
         # Base TPMS value (without level-set 't')
         field = eq_func(self.x, self.y, self.z, self.tpms_params.cell_size)
         
-        # Apply Grading
-        if self.config.grading:
-            g = self.config.grading
-            # Linear slope for the 't' parameter: t(x) = t0 + m * (x - x0)
-            m = (g.tl - g.t0) / (g.xl - g.x0)
-            t_field = g.t0 + m * (self.x - g.x0)
-            # In the original graded_tpms.py, the final field is (eq) - (t)**2
-            # or for some types, it was slightly different. 
-            # We'll stick to the "Double" variant logic where we subtract t**2.
-            final_field = field - t_field**2
-        else:
-            # Default t value if no grading (using t0 as static level-set)
-            # If grading is None, we might want a default level-set value in TPMSParams but let's assume 0.5
-            t_static = 0.5 
-            final_field = field - t_static**2
+        # Apply Grading / Thickness
+        # Get the 't' value field from the injected function
+        t_field = self.grading_func(self.x, self.y, self.z)
+        
+        # We'll stick to the "Double" variant logic where we subtract t**2.
+        final_field = field - t_field**2
             
         return final_field
 
@@ -97,27 +93,114 @@ class TPMSGenerator:
     def get_target_mesh(self) -> trimesh.Trimesh:
         """Loads target geometry or creates a default box."""
         if self.config.target_geometry:
+            print(f"Loading target geometry from: {self.config.target_geometry}")
             mesh = trimesh.load_mesh(self.config.target_geometry)
+            print(f"Loaded mesh type: {type(mesh)}")
+            
+            # Handle Scene object if returned
+            if isinstance(mesh, trimesh.Scene):
+                print("Target is a Scene, dumping to single mesh...")
+                if len(mesh.geometry) == 0:
+                     raise ValueError("Loaded Scene is empty!")
+                # Concatenate all geometries in the scene
+                mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
+                
+            print(f"Mesh vertices: {mesh.vertices.shape}")
+            print(f"Mesh bounds: {mesh.bounds}")
+            
             # Center the target mesh at the origin
+            # mesh.bounding_box might trigger generation, bounds is property
+            if mesh.bounds is None:
+                print("Warning: Mesh bounds are None!")
+            
             mesh.vertices -= mesh.bounding_box.centroid
             return mesh
         else:
             # Create a box matching the domain, centered at [0,0,0] by default
             return trimesh.primitives.Box(extents=(self.domain.length, self.domain.width, self.domain.height))
 
+    def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh:
+        """Generates a solid box for the specified lid (Centered Coordinates)."""
+        l, w, h = self.domain.length, self.domain.width, self.domain.height
+        
+        # Margin to ensure overlap
+        margin = 1.0 
+        
+        # Lids are generated relative to the Origin (0,0,0) which is the center of the domain.
+        # Domain extends [-L/2, L/2], [-W/2, W/2], [-H/2, H/2]
+        
+        if side == 'x_min':
+            # Lid at x = -L/2. Thickness extends inwards? 
+            # Or outwards? Ideally inwards to be valid part of domain.
+            # If Lid is part of the structure, it occupies [-L/2, -L/2 + t].
+            center_x = -l/2 + thickness/2
+            box = trimesh.primitives.Box(extents=(thickness, w + margin, h + margin))
+            box.apply_translation([center_x, 0, 0])
+            
+        elif side == 'x_max':
+            # Lid at x = L/2. Occupies [L/2 - t, L/2].
+            center_x = l/2 - thickness/2
+            box = trimesh.primitives.Box(extents=(thickness, w + margin, h + margin))
+            box.apply_translation([center_x, 0, 0])
+            
+        elif side == 'y_min':
+            center_y = -w/2 + thickness/2
+            box = trimesh.primitives.Box(extents=(l + margin, thickness, h + margin))
+            box.apply_translation([0, center_y, 0])
+            
+        elif side == 'y_max':
+            center_y = w/2 - thickness/2
+            box = trimesh.primitives.Box(extents=(l + margin, thickness, h + margin))
+            box.apply_translation([0, center_y, 0])
+            
+        elif side == 'z_min':
+            center_z = -h/2 + thickness/2
+            box = trimesh.primitives.Box(extents=(l + margin, w + margin, thickness))
+            box.apply_translation([0, 0, center_z])
+            
+        elif side == 'z_max':
+            center_z = h/2 - thickness/2
+            box = trimesh.primitives.Box(extents=(l + margin, w + margin, thickness))
+            box.apply_translation([0, 0, center_z])
+        else:
+            print(f"Warning: Unknown lid side '{side}', skipping.")
+            return None
+            
+        return box
+
     def run(self) -> trimesh.Trimesh:
         """Executes the full generation and intersection process."""
         print(f"Generating TPMS: {self.tpms_params.type.name}...")
         tpms_mesh = self.generate_raw_mesh()
         
+        # Center TPMS Mesh First (0..L -> -L/2..L/2)
+        tpms_mesh.vertices -= [self.domain.length/2, self.domain.width/2, self.domain.height/2]
+
+        # Apply Lids (Generated in Centered Coordinates)
+        if self.config.lids:
+            print("Generating and unioning lids...")
+            lids_meshes = []
+            for side, thickness in self.config.lids.items():
+                if thickness > 0:
+                    lid_mesh = self._generate_lid(side, thickness)
+                    if lid_mesh:
+                        # mesh_union handles the union with manifold/pycork/concat
+                        print(f"Adding lid: {side}")
+                        tpms_mesh = mesh_union(tpms_mesh, lid_mesh)
+
         print("Preparing target geometry...")
         target_mesh = self.get_target_mesh()
         
-        # Always center the TPMS mesh at the origin for consistent intersection
-        tpms_mesh.vertices -= [self.domain.length/2, self.domain.width/2, self.domain.height/2]
-
-        print("Performing PyCork intersection...")
-        final_mesh = pycork_intersection(tpms_mesh, target_mesh)
+        # Clip target mesh to domain dimensions to avoid TPMS margins affecting the result
+        print("Clipping target geometry to domain boundaries...")
+        domain_box = trimesh.primitives.Box(
+            extents=(self.domain.length, self.domain.width, self.domain.height)
+        )
+        # domain_box is centered at 0,0,0, matching our coordinate system
+        target_mesh = mesh_intersection(target_mesh, domain_box)
+        
+        print("Performing Mesh intersection (TPMS + Lids ^ Target)...")
+        final_mesh = mesh_intersection(tpms_mesh, target_mesh)
         
         output_path = f"{self.config.output_name}.stl"
         final_mesh.export(output_path)

@@ -50,8 +50,62 @@ def mesh_intersection(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> trime
         print(f"Warning: pycork not available or failed, returning first mesh as mock intersection. Error: {e}")
         return mesh_a
 
-# Alias for backward compatibility if needed, though we will refactor usage
-pycork_intersection = mesh_intersection
+def mesh_union(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> trimesh.Trimesh:
+    """
+    Perform a boolean union using Manifold3D (preferred) or PyCork (fallback).
+    If both fail, falls back to trimesh.boolean.union (which handles blender/scad if avail)
+    or simple concatenation as last resort.
+    """
+    # Try Manifold3D
+    try:
+        import manifold3d
+        from manifold3d import Manifold, Mesh
+        
+        # Convert Trimesh to Manifold
+        verts_a = np.array(mesh_a.vertices, dtype=np.float32)
+        faces_a = np.array(mesh_a.faces, dtype=np.uint32)
+        m_a = Manifold(Mesh(vert_properties=verts_a, tri_verts=faces_a))
+        
+        verts_b = np.array(mesh_b.vertices, dtype=np.float32)
+        faces_b = np.array(mesh_b.faces, dtype=np.uint32)
+        m_b = Manifold(Mesh(vert_properties=verts_b, tri_verts=faces_b))
+        
+        # Perform Union
+        m_result = m_a + m_b # + operator is union in manifold3d
+        
+        out_mesh = m_result.to_mesh()
+        return trimesh.Trimesh(vertices=out_mesh.vert_properties, faces=out_mesh.tri_verts, process=False)
+        
+    except ImportError:
+        pass 
+    except Exception as e:
+        print(f"Warning: Manifold3D union failed, falling back. Error: {e}")
+
+    # Fallback to PyCork
+    try:
+        import pycork
+        verts_a = mesh_a.vertices
+        faces_a = mesh_a.faces
+        verts_b = mesh_b.vertices
+        faces_b = mesh_b.faces
+        
+        verts_res, faces_res = pycork.union(verts_a, faces_a, verts_b, faces_b)
+        return trimesh.Trimesh(vertices=verts_res, faces=faces_res, process=False)
+    except (ImportError, AttributeError, Exception) as e:
+        # AttributeError handled because pycork might not have 'union' exposed if it's minimal wrapper
+        print(f"Warning: pycork union not available or failed. Error: {e}")
+
+    # Fallback to Trimesh Boolean (requires external deps like blender or scad usually, but maybe 'manifold' engine is there)
+    try:
+        # trimesh < 4.0 might behave differently, but let's try standard bool
+        # This might fail if no engine is found
+        return trimesh.boolean.union([mesh_a, mesh_b])
+    except Exception as e:
+        print(f"Warning: trimesh boolean union failed. Falling back to concatenation (mesh might not be watertight). Error: {e}")
+        
+    # Final Fallback: Concatenation
+    # This just puts both meshes in one object.
+    return mesh_a + mesh_b
 
 def export_mesh(mesh: trimesh.Trimesh, path: str):
     """
