@@ -64,12 +64,37 @@ def test_basic_gyroid():
     logger.info("Metadata: %s", metadata)
     gen.export(mesh, "basic_gyroid.stl")
 
+def test_basic_lidinoid():
+    """Generates a simple Gyroid block with constant thickness.
+
+    Example of passing an explicit logger to TPMSGenerator.
+    """
+    config = GenerationConfig(
+        lattice=LatticeConfig(type="lidinoid", cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=40),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=30, width=20, height=20),
+            thickness=0.6,
+            lids={"x_min": 2.0, "x_max": 2.0},
+        ),
+    )
+    grading_spec = GradingSpec(
+        kind="affine",
+        params={"a": 0.5, "bx": (1.0 - 0.5) / 30.0, "by": 0.0, "bz": 0.0},
+    )
+    config.geometry.thickness = grading_spec
+    task_logger = logging.getLogger("mmgen.examples.basic_lidinoid")
+    gen = TPMSGenerator(config, logger=task_logger)
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    logger.info("Metadata: %s", metadata)
+    gen.export(mesh, "basic_lidinoid.stl")
+
 
 def test_graded_schwarz_p():
     """Generates a graded Schwarz P block."""
     config = GenerationConfig(
         lattice=LatticeConfig(type="schwarz_p", cell_size=10.0),
-        sampling=SamplingConfig(voxels_per_cell=20),
+        sampling=SamplingConfig(voxels_per_cell=30),
         geometry=GeometryConfig(
             domain=DomainConfig(length=30, width=20, height=20),
             lids={"x_min": 2.0, "x_max": 2.0},
@@ -78,7 +103,7 @@ def test_graded_schwarz_p():
 
     grading_spec = GradingSpec(
         kind="affine",
-        params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
+        params={"a": 0.2, "bx": (0.8 - 0.2) / 30.0, "by": 0.0, "bz": 0.0},
     )
 
     config.geometry.thickness = grading_spec
@@ -171,6 +196,9 @@ if __name__ == "__main__":
 
     logger.info("--- Running Basic Gyroid Test ---")
     test_basic_gyroid()
+
+    logger.info("--- Running Basic Lidinoid Test ---")
+    test_basic_lidinoid()
 
     logger.info("--- Running Graded Schwarz P Test ---")
     test_graded_schwarz_p()

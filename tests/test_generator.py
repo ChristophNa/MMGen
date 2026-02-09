@@ -131,6 +131,45 @@ def test_lidinoid_with_target(tmp_path):
     assert output_path.exists()
 
 
+def test_fast_cylinder_target_stl_invariants(tmp_path):
+    output_path = tmp_path / "fast_cylinder.stl"
+    config = _base_config(
+        tpms_type=TPMSType.GYROID,
+        cell_size=10.0,
+        voxels_per_cell=40,
+        domain=DomainConfig(length=20, width=20, height=20),
+        thickness=0.6,
+    )
+    target = trimesh.primitives.Cylinder(radius=6.0, height=20.0, sections=32)
+
+    gen = TPMSGenerator(config, target_mesh=target)
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    written = gen.export(mesh, output_path)
+
+    assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
+    assert len(mesh.vertices) > 0
+    assert len(mesh.faces) > 0
+    assert metadata.triangle_count > 0
+    assert np.isfinite(np.asarray(mesh.vertices)).all()
+    assert np.isfinite(np.asarray(metadata.bbox)).all()
+
+    radial = np.sqrt(mesh.vertices[:, 0] ** 2 + mesh.vertices[:, 1] ** 2)
+    assert float(np.max(radial)) <= 6.05
+    zmin, zmax = mesh.bounds[:, 2]
+    assert zmin == pytest.approx(-10.0, abs=0.05)
+    assert zmax == pytest.approx(10.0, abs=0.05)
+
+    assert written == output_path
+    assert output_path.exists()
+    assert output_path.stat().st_size > 0
+
+    reloaded = trimesh.load_mesh(output_path)
+    assert isinstance(reloaded, trimesh.Trimesh)
+    assert not reloaded.is_empty
+    assert np.allclose(reloaded.bounds, mesh.bounds, atol=1e-3)
+
+
 def test_grading_spec_radial(tmp_path):
     config = _base_config(
         tpms_type=TPMSType.GYROID,
