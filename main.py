@@ -13,7 +13,8 @@ def test_basic_gyroid():
         domain=DomainConfig(length=30, width=30, height=30),
     )
     gen = TPMSGenerator(config, thickness=0.5)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata}")
     gen.export(mesh, "basic_gyroid.stl")
 
 
@@ -31,7 +32,8 @@ def test_graded_schwarz_p():
     )
 
     gen = TPMSGenerator(config, thickness=grading_spec)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata}")
     gen.export(mesh, "graded_schwarz_p.stl")
 
 
@@ -50,7 +52,8 @@ def test_lids_with_benchy():
         thickness=0.5,
         target_geometry=target_geom,
     )
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata}")
     gen.export(mesh, "lidinoid_lids_benchy.stl")
 
 
@@ -68,7 +71,8 @@ def test_lidinoid_with_benchy():
         thickness=0.5,
         target_geometry=target_geom,
     )
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata}")
     gen.export(mesh, "lidinoid_mesh.stl")
 
 

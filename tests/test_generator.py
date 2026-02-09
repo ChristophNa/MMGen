@@ -1,9 +1,10 @@
+import numpy as np
 import pytest
 import trimesh
 from pydantic import ValidationError
 
 from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams, LidSpec
-from mmgen.generator import TPMSGenerator
+from mmgen.generator import MeshQualityMetadata, TPMSGenerator
 from mmgen.grading import GradingSpec
 from mmgen.tpms_types import TPMSType
 
@@ -18,11 +19,15 @@ def test_basic_gyroid(tmp_path):
     )
 
     gen = TPMSGenerator(config, thickness=0.5)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
     assert not mesh.is_empty
+    assert metadata.triangle_count > 0
+    assert isinstance(metadata.warnings, list)
+    assert np.isfinite(np.asarray(metadata.bbox)).all()
     assert written == output_path
     assert output_path.exists()
 
@@ -42,11 +47,15 @@ def test_graded_schwarz_p(tmp_path):
     )
 
     gen = TPMSGenerator(config, thickness=grading_spec)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
     assert not mesh.is_empty
+    assert metadata.triangle_count > 0
+    assert isinstance(metadata.warnings, list)
+    assert np.isfinite(np.asarray(metadata.bbox)).all()
     assert written == output_path
     assert output_path.exists()
 
@@ -69,11 +78,15 @@ def test_lidinoid_with_target(tmp_path):
         thickness=0.5,
         target_geometry=str(dummy_target),
     )
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
     assert not mesh.is_empty
+    assert metadata.triangle_count > 0
+    assert isinstance(metadata.warnings, list)
+    assert np.isfinite(np.asarray(metadata.bbox)).all()
     assert written == output_path
     assert output_path.exists()
 
@@ -96,10 +109,14 @@ def test_grading_spec_radial(tmp_path):
     )
 
     gen = TPMSGenerator(config, thickness=custom_grading)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
 
     assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
     assert not mesh.is_empty
+    assert metadata.triangle_count > 0
+    assert isinstance(metadata.warnings, list)
+    assert np.isfinite(np.asarray(metadata.bbox)).all()
 
 
 def test_missing_thickness_error():
@@ -164,3 +181,76 @@ def test_lids_rejects_unknown_key():
 def test_lids_rejects_negative_thickness():
     with pytest.raises(ValidationError):
         GeneratorConfig(lids={"x_min": -0.1})
+
+
+def _generator_for_quality_tests() -> TPMSGenerator:
+    config = GeneratorConfig(
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
+        domain=DomainConfig(length=20, width=20, height=20),
+    )
+    return TPMSGenerator(config, thickness=0.5)
+
+
+def test_generate_mesh_can_skip_watertight_check():
+    gen = _generator_for_quality_tests()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True, check_watertight=False)
+
+    assert isinstance(mesh, trimesh.Trimesh)
+    assert metadata.is_watertight is None
+    assert isinstance(metadata.warnings, list)
+
+
+def test_quality_gate_rejects_empty_mesh():
+    gen = _generator_for_quality_tests()
+    empty_mesh = trimesh.Trimesh(vertices=np.empty((0, 3)), faces=np.empty((0, 3), dtype=np.int64))
+
+    with pytest.raises(ValueError, match="empty"):
+        gen._validate_mesh_quality(
+            empty_mesh,
+            allow_nonwatertight=False,
+            check_watertight=True,
+        )
+
+
+def test_quality_gate_rejects_non_finite_vertices():
+    gen = _generator_for_quality_tests()
+    mesh = trimesh.creation.box()
+    mesh.vertices[0, 0] = np.nan
+
+    with pytest.raises(ValueError, match="non-finite"):
+        gen._validate_mesh_quality(
+            mesh,
+            allow_nonwatertight=False,
+            check_watertight=True,
+        )
+
+
+def test_quality_gate_rejects_non_watertight_by_default():
+    gen = _generator_for_quality_tests()
+    mesh = trimesh.creation.box()
+    mesh.update_faces(np.arange(len(mesh.faces) - 1))
+    mesh.remove_unreferenced_vertices()
+    assert not mesh.is_watertight
+
+    with pytest.raises(ValueError, match="not watertight"):
+        gen._validate_mesh_quality(
+            mesh,
+            allow_nonwatertight=False,
+            check_watertight=True,
+        )
+
+
+def test_quality_gate_allows_non_watertight_with_warning():
+    gen = _generator_for_quality_tests()
+    mesh = trimesh.creation.box()
+    mesh.update_faces(np.arange(len(mesh.faces) - 1))
+    mesh.remove_unreferenced_vertices()
+    assert not mesh.is_watertight
+
+    metadata = gen._validate_mesh_quality(
+        mesh,
+        allow_nonwatertight=True,
+        check_watertight=True,
+    )
+    assert metadata.is_watertight is False
+    assert any("not watertight" in warning for warning in metadata.warnings)

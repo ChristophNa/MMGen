@@ -50,7 +50,8 @@ def main():
     )
 
     gen = TPMSGenerator(config, thickness=0.5)
-    mesh = gen.generate_mesh()
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata}")
 
     has_lid = check_lid_coverage(mesh, config.domain, 2, -10.0)
 
@@ -68,7 +69,8 @@ def main():
     )
 
     gen2 = TPMSGenerator(config2, thickness=0.5)
-    mesh2 = gen2.generate_mesh()
+    mesh2, metadata2 = gen2.generate_mesh(allow_nonwatertight=True)
+    print(f"Metadata: {metadata2}")
 
     has_lid_min = check_lid_coverage(mesh2, config2.domain, 0, -10.0)
     has_lid_max = check_lid_coverage(mesh2, config2.domain, 0, 10.0)

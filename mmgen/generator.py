@@ -1,12 +1,23 @@
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Union
+
 import numpy as np
 import trimesh
 from skimage import measure
-from typing import Union
-from pathlib import Path
+
 from .config import GeneratorConfig
+from .grading import GradingSpec, grading_from_spec
 from .tpms_types import TPMS_REGISTRY
 from .utils import mesh_intersection, mesh_union
-from .grading import GradingSpec, grading_from_spec
+
+
+@dataclass
+class MeshQualityMetadata:
+    triangle_count: int
+    bbox: tuple[tuple[float, float, float], tuple[float, float, float]]
+    is_watertight: bool | None
+    warnings: list[str] = field(default_factory=list)
 
 class TPMSGenerator:
     def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingSpec], 
@@ -174,13 +185,60 @@ class TPMSGenerator:
             
         return box
 
-    def generate_mesh(self) -> trimesh.Trimesh:
+    @staticmethod
+    def _compute_metadata(
+        mesh: trimesh.Trimesh, check_watertight: bool, warnings: list[str]
+    ) -> MeshQualityMetadata:
+        bounds = np.asarray(mesh.bounds, dtype=float)
+        bbox = (
+            tuple(float(v) for v in bounds[0]),
+            tuple(float(v) for v in bounds[1]),
+        )
+        is_watertight = bool(mesh.is_watertight) if check_watertight else None
+        return MeshQualityMetadata(
+            triangle_count=int(len(mesh.faces)),
+            bbox=bbox,
+            is_watertight=is_watertight,
+            warnings=warnings,
+        )
+
+    def _validate_mesh_quality(
+        self,
+        mesh: trimesh.Trimesh,
+        *,
+        allow_nonwatertight: bool,
+        check_watertight: bool,
+    ) -> MeshQualityMetadata:
+        if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
+            raise ValueError("Generated mesh is empty: expected non-empty vertices and faces.")
+
+        vertices = np.asarray(mesh.vertices)
+        if not np.isfinite(vertices).all():
+            raise ValueError("Generated mesh contains non-finite vertex coordinates.")
+
+        warnings: list[str] = []
+        if check_watertight and not mesh.is_watertight:
+            warnings.append("Generated mesh is not watertight.")
+            if not allow_nonwatertight:
+                raise ValueError(
+                    "Generated mesh is not watertight. "
+                    "Pass allow_nonwatertight=True to continue with warning metadata."
+                )
+
+        return self._compute_metadata(mesh, check_watertight=check_watertight, warnings=warnings)
+
+    def generate_mesh(
+        self,
+        *,
+        allow_nonwatertight: bool = False,
+        check_watertight: bool = True,
+    ) -> tuple[trimesh.Trimesh, MeshQualityMetadata]:
         """Executes the full mesh generation and intersection process."""
         print(f"Generating TPMS: {self.tpms_params.type.name}...")
         tpms_mesh = self.generate_raw_mesh()
-        
+
         # Center TPMS Mesh First (0..L -> -L/2..L/2)
-        tpms_mesh.vertices -= [self.domain.length/2, self.domain.width/2, self.domain.height/2]
+        tpms_mesh.vertices -= [self.domain.length / 2, self.domain.width / 2, self.domain.height / 2]
 
         # Apply Lids (Generated in Centered Coordinates)
         enabled_lids = self.config.lids.enabled()
@@ -195,7 +253,7 @@ class TPMSGenerator:
 
         print("Preparing target geometry...")
         target_mesh = self.get_target_mesh()
-        
+
         # Clip target mesh to domain dimensions to avoid TPMS margins affecting the result
         print("Clipping target geometry to domain boundaries...")
         domain_box = trimesh.primitives.Box(
@@ -203,11 +261,16 @@ class TPMSGenerator:
         )
         # domain_box is centered at 0,0,0, matching our coordinate system
         target_mesh = mesh_intersection(target_mesh, domain_box)
-        
+
         print("Performing Mesh intersection (TPMS + Lids ^ Target)...")
         final_mesh = mesh_intersection(tpms_mesh, target_mesh)
+        metadata = self._validate_mesh_quality(
+            final_mesh,
+            allow_nonwatertight=allow_nonwatertight,
+            check_watertight=check_watertight,
+        )
 
-        return final_mesh
+        return final_mesh, metadata
 
     def export(self, mesh: trimesh.Trimesh, output_path: Path) -> Path:
         """Exports a mesh to disk and returns the written path."""
