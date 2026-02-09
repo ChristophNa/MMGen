@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import logging
 from pathlib import Path
 from typing import Union
 
@@ -26,12 +27,17 @@ class TPMSGenerator:
         thickness: Union[float, GradingSpec],
         target_geometry_path: Path | None = None,
         target_mesh: trimesh.Trimesh | None = None,
+        logger: logging.Logger | None = None,
+        log_level: int | str | None = None,
     ):
         self.config = config
         self.domain = config.domain
         self.tpms_params = config.tpms
         self.target_geometry_path = Path(target_geometry_path) if target_geometry_path is not None else None
         self.target_mesh = target_mesh
+        self.logger = logger or logging.getLogger(__name__)
+        if log_level is not None:
+            self.logger.setLevel(self._normalize_log_level(log_level))
 
         if self.target_geometry_path is not None and self.target_mesh is not None:
             raise ValueError("Provide either target_geometry_path or target_mesh, not both.")
@@ -44,6 +50,16 @@ class TPMSGenerator:
             raise ValueError("thickness must be a float or a GradingSpec")
 
         self.grading_func = grading_from_spec(self.grading_spec)
+
+    @staticmethod
+    def _normalize_log_level(log_level: int | str) -> int:
+        if isinstance(log_level, int):
+            return log_level
+        if isinstance(log_level, str):
+            level = logging.getLevelNamesMapping().get(log_level.upper())
+            if level is not None:
+                return level
+        raise ValueError(f"Invalid log level: {log_level!r}")
             
     def generate_grid(self):
         """Generates the 3D grid based on domain and resolution."""
@@ -119,19 +135,19 @@ class TPMSGenerator:
     def get_target_mesh(self) -> trimesh.Trimesh:
         """Loads target geometry or creates a default box."""
         if self.target_mesh is not None:
-            print("Using provided target mesh.")
+            self.logger.info("Using provided target mesh.")
             mesh = self.target_mesh.copy()
         elif self.target_geometry_path is not None:
-            print(f"Loading target geometry from: {self.target_geometry_path}")
+            self.logger.info("Loading target geometry from: %s", self.target_geometry_path)
             mesh = trimesh.load_mesh(self.target_geometry_path)
-            print(f"Loaded mesh type: {type(mesh)}")
+            self.logger.debug("Loaded mesh type: %s", type(mesh))
         else:
             # Create a box matching the domain, centered at [0,0,0] by default
             return trimesh.primitives.Box(extents=(self.domain.length, self.domain.width, self.domain.height))
 
         # Handle Scene object if returned
         if isinstance(mesh, trimesh.Scene):
-            print("Target is a Scene, dumping to single mesh...")
+            self.logger.info("Target is a Scene; concatenating geometry into a single mesh.")
             if len(mesh.geometry) == 0:
                  raise ValueError("Loaded Scene is empty!")
             # Concatenate all geometries in the scene
@@ -144,18 +160,18 @@ class TPMSGenerator:
             process=False,
         )
 
-        print(f"Mesh vertices: {mesh.vertices.shape}")
-        print(f"Mesh bounds: {mesh.bounds}")
+        self.logger.debug("Target mesh vertices shape: %s", mesh.vertices.shape)
+        self.logger.debug("Target mesh bounds: %s", mesh.bounds)
 
         # Center the target mesh at the origin
         # mesh.bounding_box might trigger generation, bounds is property
         if mesh.bounds is None:
-            print("Warning: Mesh bounds are None!")
+            self.logger.warning("Target mesh bounds are None.")
 
         mesh.vertices -= mesh.bounding_box.centroid
         return mesh
 
-    def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh:
+    def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh | None:
         """Generates a solid box for the specified lid (Centered Coordinates)."""
         l, w, h = self.domain.length, self.domain.width, self.domain.height
         
@@ -199,7 +215,7 @@ class TPMSGenerator:
             box = trimesh.primitives.Box(extents=(l + margin, w + margin, thickness))
             box.apply_translation([0, 0, center_z])
         else:
-            print(f"Warning: Unknown lid side '{side}', skipping.")
+            self.logger.warning("Unknown lid side '%s'; skipping.", side)
             return None
             
         return box
@@ -238,6 +254,7 @@ class TPMSGenerator:
         warnings: list[str] = []
         if check_watertight and not mesh.is_watertight:
             warnings.append("Generated mesh is not watertight.")
+            self.logger.warning("Generated mesh is not watertight.")
             if not allow_nonwatertight:
                 raise ValueError(
                     "Generated mesh is not watertight. "
@@ -253,7 +270,7 @@ class TPMSGenerator:
         check_watertight: bool = True,
     ) -> tuple[trimesh.Trimesh, MeshQualityMetadata]:
         """Executes the full mesh generation and intersection process."""
-        print(f"Generating TPMS: {self.tpms_params.type.name}...")
+        self.logger.info("Generating TPMS: %s", self.tpms_params.type.name)
         tpms_mesh = self.generate_raw_mesh()
 
         # Center TPMS Mesh First (0..L -> -L/2..L/2)
@@ -262,31 +279,36 @@ class TPMSGenerator:
         # Apply Lids (Generated in Centered Coordinates)
         enabled_lids = self.config.lids.enabled()
         if enabled_lids:
-            print("Generating and unioning lids...")
+            self.logger.info("Generating and unioning %d lids.", len(enabled_lids))
             for side, thickness in enabled_lids.items():
                 lid_mesh = self._generate_lid(side, thickness)
                 if lid_mesh:
                     # mesh_union handles the union using manifold3d.
-                    print(f"Adding lid: {side}")
+                    self.logger.debug("Adding lid: %s (thickness=%s)", side, thickness)
                     tpms_mesh = mesh_union(tpms_mesh, lid_mesh)
 
-        print("Preparing target geometry...")
+        self.logger.info("Preparing target geometry.")
         target_mesh = self.get_target_mesh()
 
         # Clip target mesh to domain dimensions to avoid TPMS margins affecting the result
-        print("Clipping target geometry to domain boundaries...")
+        self.logger.info("Clipping target geometry to domain boundaries.")
         domain_box = trimesh.primitives.Box(
             extents=(self.domain.length, self.domain.width, self.domain.height)
         )
         # domain_box is centered at 0,0,0, matching our coordinate system
         target_mesh = mesh_intersection(target_mesh, domain_box)
 
-        print("Performing Mesh intersection (TPMS + Lids ^ Target)...")
+        self.logger.info("Performing mesh intersection (TPMS + lids with target).")
         final_mesh = mesh_intersection(tpms_mesh, target_mesh)
         metadata = self._validate_mesh_quality(
             final_mesh,
             allow_nonwatertight=allow_nonwatertight,
             check_watertight=check_watertight,
+        )
+        self.logger.info(
+            "Mesh generation complete: %d triangles, watertight=%s",
+            metadata.triangle_count,
+            metadata.is_watertight,
         )
 
         return final_mesh, metadata
@@ -295,5 +317,5 @@ class TPMSGenerator:
         """Exports a mesh to disk and returns the written path."""
         path = Path(output_path)
         mesh.export(path)
-        print(f"Mesh saved to {path}")
+        self.logger.info("Mesh saved to %s", path)
         return path

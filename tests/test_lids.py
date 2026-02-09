@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 
@@ -10,6 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mmgen.config import DomainConfig, GeneratorConfig, TPMSParams
 from mmgen.generator import TPMSGenerator
 from mmgen.tpms_types import TPMSType
+
+logger = logging.getLogger(__name__)
 
 
 def check_lid_coverage(
@@ -30,19 +33,29 @@ def check_lid_coverage(
     # Domain extents: [-L/2, L/2] etc.
 
     bounds = mesh.bounds
-    print(f"Mesh Bounds: {bounds}")
+    logger.debug("Mesh bounds: %s", bounds)
 
     on_plane = np.abs(mesh.vertices[:, axis] - value) < tolerance
 
     count = np.sum(on_plane)
-    print(f"Checked plane {axis}={value} (tol={tolerance}). Vertices found: {count}")
+    logger.info(
+        "Checked plane %d=%s (tol=%s). Vertices found: %d",
+        axis,
+        value,
+        tolerance,
+        count,
+    )
 
     return count > 0
 
 
 def main():
     # Test 1: Z_MIN Lid
-    print("--- Test 1: Z_MIN Lid (Bottom) ---")
+    logging.basicConfig(
+        level=os.getenv("MMGEN_LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    logger.info("--- Test 1: Z_MIN Lid (Bottom) ---")
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
         domain=DomainConfig(length=20, width=20, height=20),
@@ -51,17 +64,17 @@ def main():
 
     gen = TPMSGenerator(config, thickness=0.5)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
-    print(f"Metadata: {metadata}")
+    logger.info("Metadata: %s", metadata)
 
     has_lid = check_lid_coverage(mesh, config.domain, 2, -10.0)
 
     if has_lid:
-        print("PASS: Lid detected at Z_MIN.")
+        logger.info("PASS: Lid detected at Z_MIN.")
     else:
-        print("FAIL: No Lid detected at Z_MIN.")
+        logger.error("FAIL: No Lid detected at Z_MIN.")
 
     # Test 2: Double Lids (X_MIN, X_MAX)
-    print("\n--- Test 2: X_MIN and X_MAX Lids ---")
+    logger.info("--- Test 2: X_MIN and X_MAX Lids ---")
     config2 = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=20),
         domain=DomainConfig(length=20, width=20, height=20),
@@ -70,15 +83,15 @@ def main():
 
     gen2 = TPMSGenerator(config2, thickness=0.5)
     mesh2, metadata2 = gen2.generate_mesh(allow_nonwatertight=True)
-    print(f"Metadata: {metadata2}")
+    logger.info("Metadata: %s", metadata2)
 
     has_lid_min = check_lid_coverage(mesh2, config2.domain, 0, -10.0)
     has_lid_max = check_lid_coverage(mesh2, config2.domain, 0, 10.0)
 
     if has_lid_min and has_lid_max:
-        print("PASS: Lids detected at X_MIN and X_MAX.")
+        logger.info("PASS: Lids detected at X_MIN and X_MAX.")
     else:
-        print(f"FAIL: X_MIN={has_lid_min}, X_MAX={has_lid_max}")
+        logger.error("FAIL: X_MIN=%s, X_MAX=%s", has_lid_min, has_lid_max)
 
 
 if __name__ == "__main__":
