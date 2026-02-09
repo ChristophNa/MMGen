@@ -2,7 +2,7 @@ import pytest
 import trimesh
 from pydantic import ValidationError
 
-from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams
+from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams, LidSpec
 from mmgen.generator import TPMSGenerator
 from mmgen.grading import GradingSpec
 from mmgen.tpms_types import TPMSType
@@ -148,3 +148,19 @@ def test_grading_spec_radial_center_must_be_3d():
             kind="radial",
             params={"t_center": 0.2, "t_outer": 0.8, "center": (0, 0), "radius": 1.0},
         )
+
+
+def test_lids_accepts_lid_spec():
+    config = GeneratorConfig(lids=LidSpec(z_min=2.0))
+    assert config.lids.z_min == 2.0
+    assert config.lids.x_min == 0.0
+
+
+def test_lids_rejects_unknown_key():
+    with pytest.raises(ValidationError):
+        GeneratorConfig(lids={"foo": 1.0})
+
+
+def test_lids_rejects_negative_thickness():
+    with pytest.raises(ValidationError):
+        GeneratorConfig(lids={"x_min": -0.1})

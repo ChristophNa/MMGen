@@ -26,13 +26,10 @@
 
 # from __future__ import annotations
 
-from typing import Dict, Any
+from typing import Any
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from .tpms_types import TPMSType
-
-_ALLOWED_LID_KEYS = {"x_min", "x_max", "y_min", "y_max", "z_min", "z_max"}
-
 
 class TPMSParams(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
@@ -62,22 +59,23 @@ class DomainConfig(BaseModel):
     height: float = Field(default=10.0, gt=0.0)  # [mm]
 
 
+class LidSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    x_min: float = Field(default=0.0, ge=0.0)
+    x_max: float = Field(default=0.0, ge=0.0)
+    y_min: float = Field(default=0.0, ge=0.0)
+    y_max: float = Field(default=0.0, ge=0.0)
+    z_min: float = Field(default=0.0, ge=0.0)
+    z_max: float = Field(default=0.0, ge=0.0)
+
+    def enabled(self) -> dict[str, float]:
+        return {side: thickness for side, thickness in self.model_dump().items() if thickness > 0.0}
+
+
 class GeneratorConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     tpms: TPMSParams = Field(default_factory=TPMSParams)
     domain: DomainConfig = Field(default_factory=DomainConfig)
-    lids: Dict[str, float] = Field(default_factory=dict)
-
-    @field_validator("lids")
-    @classmethod
-    def validate_lids(cls, lids: Dict[str, float]) -> Dict[str, float]:
-        unknown = set(lids) - _ALLOWED_LID_KEYS
-        if unknown:
-            raise ValueError(f"Unknown lid keys: {sorted(unknown)}; allowed: {sorted(_ALLOWED_LID_KEYS)}")
-
-        negatives = {k: v for k, v in lids.items() if v < 0}
-        if negatives:
-            raise ValueError(f"Lid thickness must be >= 0; got: {negatives}")
-
-        return lids
+    lids: LidSpec = Field(default_factory=LidSpec)

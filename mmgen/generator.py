@@ -183,16 +183,15 @@ class TPMSGenerator:
         tpms_mesh.vertices -= [self.domain.length/2, self.domain.width/2, self.domain.height/2]
 
         # Apply Lids (Generated in Centered Coordinates)
-        if self.config.lids:
+        enabled_lids = self.config.lids.enabled()
+        if enabled_lids:
             print("Generating and unioning lids...")
-            lids_meshes = []
-            for side, thickness in self.config.lids.items():
-                if thickness > 0:
-                    lid_mesh = self._generate_lid(side, thickness)
-                    if lid_mesh:
-                        # mesh_union handles the union with manifold/pycork/concat
-                        print(f"Adding lid: {side}")
-                        tpms_mesh = mesh_union(tpms_mesh, lid_mesh)
+            for side, thickness in enabled_lids.items():
+                lid_mesh = self._generate_lid(side, thickness)
+                if lid_mesh:
+                    # mesh_union handles the union with manifold/pycork/concat
+                    print(f"Adding lid: {side}")
+                    tpms_mesh = mesh_union(tpms_mesh, lid_mesh)
 
         print("Preparing target geometry...")
         target_mesh = self.get_target_mesh()
