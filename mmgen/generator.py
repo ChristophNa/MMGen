@@ -189,7 +189,7 @@ class TPMSGenerator:
             for side, thickness in enabled_lids.items():
                 lid_mesh = self._generate_lid(side, thickness)
                 if lid_mesh:
-                    # mesh_union handles the union with manifold/pycork/concat
+                    # mesh_union handles the union using manifold3d.
                     print(f"Adding lid: {side}")
                     tpms_mesh = mesh_union(tpms_mesh, lid_mesh)
 
