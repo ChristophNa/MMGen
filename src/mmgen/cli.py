@@ -1,9 +1,11 @@
+"""Command-line entry point for MMGen sample generation workflows."""
+
 import argparse
 import logging
 import os
 from pathlib import Path
 
-from mmgen.config import (
+from .config import (
     DomainConfig,
     GenerationConfig,
     GeometryConfig,
@@ -11,9 +13,9 @@ from mmgen.config import (
     LatticeConfig,
     SamplingConfig,
 )
-from mmgen.generator import TPMSGenerator
-from mmgen.grading import GradingSpec
-from mmgen.tpms_types import TPMSType
+from .generator import TPMSGenerator
+from .grading import GradingSpec
+from .tpms_types import TPMSType
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +80,7 @@ def test_basic_gyroid():
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
     gen.export(mesh, Path("basic_gyroid.stl"))
+
 
 def test_basic_lidinoid():
     """Generate a lidinoid example with lids and affine grading.
@@ -175,8 +178,13 @@ def test_lidinoid_with_benchy():
     gen.export(mesh, Path("lidinoid_mesh.stl"))
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse CLI options for sample generation workflows.
+
+    Parameters
+    ----------
+    argv : list[str] or None, optional
+        Optional argv override for testing.
 
     Returns
     -------
@@ -213,23 +221,18 @@ def parse_args() -> argparse.Namespace:
         default="mmgen.log",
         help="Log file path (used only when --log-mode=file).",
     )
-    return parser.parse_args()
+    return parser.parse_args(argv)
 
 
-if __name__ == "__main__":
-    # Usage examples:
-    #   python main.py --log-mode console --log-level INFO
-    #   python main.py --log-mode file --log-file mmgen.log
-    #   python main.py --log-mode warning
-    args = parse_args()
+def main(argv: list[str] | None = None) -> int:
+    """Run MMGen sample generation workflows from the CLI."""
+    args = parse_args(argv)
     if args.log_mode == "file":
         configure_file_logging(args.log_file)
     elif args.log_mode == "warning":
         configure_warning_only_logging()
     else:
         configure_console_logging(args.log_level)
-
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     logger.info("--- Running Basic Gyroid Test ---")
     test_basic_gyroid()
@@ -247,3 +250,8 @@ if __name__ == "__main__":
     test_lidinoid_with_benchy()
 
     logger.info("Verification complete. Check generated STL files.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

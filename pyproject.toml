@@ -26,6 +26,9 @@ test = [
     "pytest",
 ]
 
+[project.scripts]
+mmgen = "mmgen.cli:main"
+
 [tool.setuptools.packages.find]
-where = ["."]
+where = ["src"]
 include = ["mmgen*"]
