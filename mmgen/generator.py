@@ -380,10 +380,9 @@ class TPMSGenerator:
             Mesh quality metadata.
         """
         bounds = np.asarray(mesh.bounds, dtype=float)
-        bbox = (
-            tuple(float(v) for v in bounds[0]),
-            tuple(float(v) for v in bounds[1]),
-        )
+        min_xyz = (float(bounds[0][0]), float(bounds[0][1]), float(bounds[0][2]))
+        max_xyz = (float(bounds[1][0]), float(bounds[1][1]), float(bounds[1][2]))
+        bbox = (min_xyz, max_xyz)
         is_watertight = bool(mesh.is_watertight) if check_watertight else None
         return MeshQualityMetadata(
             triangle_count=int(len(mesh.faces)),

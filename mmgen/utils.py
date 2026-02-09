@@ -117,11 +117,17 @@ def export_mesh(mesh: trimesh.Trimesh, path: str):
     file_ext = os.path.splitext(path)[1].lower()
     
     if file_ext == '.off':
-        # Specific handling for OFF to match previous behavior if needed, 
-        # but trimesh.export handles it too. Keeping previous logic for safety.
-        off_data = trimesh.exchange.off.export_off(mesh, digits=6)
-        with open(path, "w") as f:
-            f.write(off_data)
+        off_data = mesh.export(file_type="off")
+        if isinstance(off_data, (bytes, bytearray, memoryview)):
+            with open(path, "wb") as f:
+                f.write(bytes(off_data))
+        elif isinstance(off_data, str):
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(off_data)
+        else:
+            raise TypeError(
+                f"Unsupported OFF export payload type: {type(off_data).__name__}"
+            )
     else:
         # Generic export for STL, 3MF, etc.
         mesh.export(path)

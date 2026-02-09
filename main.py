@@ -7,6 +7,7 @@ from mmgen.config import (
     DomainConfig,
     GenerationConfig,
     GeometryConfig,
+    LidSpec,
     LatticeConfig,
     SamplingConfig,
 )
@@ -76,7 +77,7 @@ def test_basic_gyroid():
     gen = TPMSGenerator(config, logger=task_logger)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
-    gen.export(mesh, "basic_gyroid.stl")
+    gen.export(mesh, Path("basic_gyroid.stl"))
 
 def test_basic_lidinoid():
     """Generate a lidinoid example with lids and affine grading.
@@ -86,12 +87,12 @@ def test_basic_lidinoid():
     This is a sample workflow that demonstrates passing a dedicated logger.
     """
     config = GenerationConfig(
-        lattice=LatticeConfig(type="lidinoid", cell_size=10.0),
+        lattice=LatticeConfig(type=TPMSType.LIDINOID, cell_size=10.0),
         sampling=SamplingConfig(voxels_per_cell=40),
         geometry=GeometryConfig(
             domain=DomainConfig(length=30, width=20, height=20),
             thickness=0.6,
-            lids={"x_min": 2.0, "x_max": 2.0},
+            lids=LidSpec(x_min=2.0, x_max=2.0),
         ),
     )
     grading_spec = GradingSpec(
@@ -103,17 +104,17 @@ def test_basic_lidinoid():
     gen = TPMSGenerator(config, logger=task_logger)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
-    gen.export(mesh, "basic_lidinoid.stl")
+    gen.export(mesh, Path("basic_lidinoid.stl"))
 
 
 def test_graded_schwarz_p():
     """Generate a Schwarz-P example with affine thickness grading."""
     config = GenerationConfig(
-        lattice=LatticeConfig(type="schwarz_p", cell_size=10.0),
+        lattice=LatticeConfig(type=TPMSType.SCHWARZ_P, cell_size=10.0),
         sampling=SamplingConfig(voxels_per_cell=30),
         geometry=GeometryConfig(
             domain=DomainConfig(length=30, width=20, height=20),
-            lids={"x_min": 2.0, "x_max": 2.0},
+            lids=LidSpec(x_min=2.0, x_max=2.0),
         ),
     )
 
@@ -126,7 +127,7 @@ def test_graded_schwarz_p():
     gen = TPMSGenerator(config)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
-    gen.export(mesh, "graded_schwarz_p.stl")
+    gen.export(mesh, Path("graded_schwarz_p.stl"))
 
 
 def test_lids_with_benchy():
@@ -138,7 +139,7 @@ def test_lids_with_benchy():
         sampling=SamplingConfig(voxels_per_cell=30),
         geometry=GeometryConfig(
             domain=DomainConfig(length=60, width=40, height=48),
-            lids={"z_min": 2.0, "z_max": 2.0},
+            lids=LidSpec(z_min=2.0, z_max=2.0),
             thickness=0.5,
         ),
     )
@@ -149,7 +150,7 @@ def test_lids_with_benchy():
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
-    gen.export(mesh, "lidinoid_lids_benchy.stl")
+    gen.export(mesh, Path("lidinoid_lids_benchy.stl"))
 
 
 def test_lidinoid_with_benchy():
@@ -171,7 +172,7 @@ def test_lidinoid_with_benchy():
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
-    gen.export(mesh, "lidinoid_mesh.stl")
+    gen.export(mesh, Path("lidinoid_mesh.stl"))
 
 
 def parse_args() -> argparse.Namespace:
