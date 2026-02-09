@@ -1,3 +1,5 @@
+"""Mesh utility helpers for boolean operations and exports."""
+
 import os
 import trimesh
 import numpy as np
@@ -9,6 +11,18 @@ _MANIFOLD_INSTALL_MSG = (
 
 
 def _load_manifold():
+    """Import manifold3d types used by boolean operations.
+
+    Returns
+    -------
+    tuple[type, type]
+        ``(Manifold, Mesh)`` classes from ``manifold3d``.
+
+    Raises
+    ------
+    ImportError
+        If ``manifold3d`` is not installed.
+    """
     try:
         from manifold3d import Manifold, Mesh
     except ImportError as exc:
@@ -17,6 +31,18 @@ def _load_manifold():
 
 
 def _to_manifold(mesh: trimesh.Trimesh):
+    """Convert a trimesh mesh into a manifold3d manifold object.
+
+    Parameters
+    ----------
+    mesh : trimesh.Trimesh
+        Source mesh.
+
+    Returns
+    -------
+    Any
+        manifold3d manifold instance.
+    """
     Manifold, Mesh = _load_manifold()
     verts = np.array(mesh.vertices, dtype=np.float32)
     faces = np.array(mesh.faces, dtype=np.uint32)
@@ -24,28 +50,69 @@ def _to_manifold(mesh: trimesh.Trimesh):
 
 
 def _to_trimesh(mesh):
+    """Convert a manifold3d mesh payload back to ``trimesh.Trimesh``.
+
+    Parameters
+    ----------
+    mesh : Any
+        manifold3d mesh payload exposing ``vert_properties`` and ``tri_verts``.
+
+    Returns
+    -------
+    trimesh.Trimesh
+        Converted mesh with ``process=False``.
+    """
     return trimesh.Trimesh(vertices=mesh.vert_properties, faces=mesh.tri_verts, process=False)
 
 
 def mesh_intersection(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> trimesh.Trimesh:
-    """
-    Perform a boolean intersection using manifold3d.
+    """Perform boolean intersection using manifold3d.
+
+    Parameters
+    ----------
+    mesh_a : trimesh.Trimesh
+        First input mesh.
+    mesh_b : trimesh.Trimesh
+        Second input mesh.
+
+    Returns
+    -------
+    trimesh.Trimesh
+        Intersection mesh.
     """
     m_a = _to_manifold(mesh_a)
     m_b = _to_manifold(mesh_b)
     return _to_trimesh((m_a ^ m_b).to_mesh())
 
 def mesh_union(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> trimesh.Trimesh:
-    """
-    Perform a boolean union using manifold3d.
+    """Perform boolean union using manifold3d.
+
+    Parameters
+    ----------
+    mesh_a : trimesh.Trimesh
+        First input mesh.
+    mesh_b : trimesh.Trimesh
+        Second input mesh.
+
+    Returns
+    -------
+    trimesh.Trimesh
+        Union mesh.
     """
     m_a = _to_manifold(mesh_a)
     m_b = _to_manifold(mesh_b)
     return _to_trimesh((m_a + m_b).to_mesh())
 
 def export_mesh(mesh: trimesh.Trimesh, path: str):
-    """
-    Export a mesh to a file. Supports .off, .stl, .3mf, etc. via trimesh.
+    """Export a mesh to disk.
+
+    Parameters
+    ----------
+    mesh : trimesh.Trimesh
+        Mesh to export.
+    path : str
+        Output file path. ``.off`` is handled explicitly; other formats are delegated
+        to ``trimesh``.
     """
     file_ext = os.path.splitext(path)[1].lower()
     
@@ -60,5 +127,11 @@ def export_mesh(mesh: trimesh.Trimesh, path: str):
         mesh.export(path)
 
 def ensure_dir(path: str):
-    """Ensure directory exists."""
+    """Ensure the parent directory for a path exists.
+
+    Parameters
+    ----------
+    path : str
+        File path whose parent directory should be created.
+    """
     os.makedirs(os.path.dirname(path), exist_ok=True)

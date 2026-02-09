@@ -1,9 +1,29 @@
+"""TPMS equation definitions and registry."""
+
 import numpy as np
 from enum import Enum
 from typing import Callable
 from numpy import sin, cos, pi
 
 class TPMSType(str, Enum):
+    """Supported TPMS lattice families.
+
+    Attributes
+    ----------
+    GYROID : str
+        Gyroid formulation.
+    SCHWARZ_P : str
+        Schwarz-P formulation.
+    DIAMOND : str
+        Diamond formulation.
+    LIDINOID : str
+        Lidinoid formulation.
+    SPLIT_P : str
+        Split-P formulation.
+    NEOVIUS : str
+        Neovius formulation.
+    """
+
     GYROID = "GYROID"
     SCHWARZ_P = "SCHWARZ_P"
     DIAMOND = "DIAMOND"
@@ -12,6 +32,20 @@ class TPMSType(str, Enum):
     NEOVIUS = "NEOVIUS"
 
 def gyroid_eq(x, y, z, a):
+    """Evaluate the gyroid implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     cox = cos(2.0 * pi * x / a)
     six = sin(2.0 * pi * x / a)
     coy = cos(2.0 * pi * y / a)
@@ -24,6 +58,20 @@ def gyroid_eq(x, y, z, a):
            2*(six*coy*siy*coz + six*coy*siz*cox + cox*siy*siz*coz)
 
 def schwarz_p_eq(x, y, z, a):
+    """Evaluate the Schwarz P implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     cox = cos(2.0 * pi * x / a)
     coy = cos(2.0 * pi * y / a)
     coz = cos(2.0 * pi * z / a)
@@ -31,6 +79,20 @@ def schwarz_p_eq(x, y, z, a):
     return cox**2 + coy**2 + coz**2 + 2*(cox*coy + cox*coz + coy*coz)
 
 def diamond_eq(x, y, z, a):
+    """Evaluate the diamond implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     six = sin(2.0 * pi * x / a)
     cox = cos(2.0 * pi * x / a)
     siy = sin(2.0 * pi * y / a)
@@ -44,6 +106,20 @@ def diamond_eq(x, y, z, a):
     return term1 + term2 + term3
 
 def lidinoid_eq(x, y, z, a):
+    """Evaluate the lidinoid implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     six = sin(2.0 * pi * x / a)
     siy = sin(2.0 * pi * y / a)
     siz = sin(2.0 * pi * z / a)
@@ -73,6 +149,20 @@ def lidinoid_eq(x, y, z, a):
     return res
 
 def split_p_eq(x, y, z, a):
+    """Evaluate the split-P implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     six = sin(2.0 * pi * x / a)
     siy = sin(2.0 * pi * y / a)
     siz = sin(2.0 * pi * z / a)
@@ -104,6 +194,20 @@ def split_p_eq(x, y, z, a):
     return res
 
 def neovius_eq(x, y, z, a):
+    """Evaluate the neovius implicit field.
+
+    Parameters
+    ----------
+    x, y, z : array_like
+        Coordinate arrays.
+    a : float
+        Unit-cell size.
+
+    Returns
+    -------
+    ndarray
+        Implicit scalar field values.
+    """
     cox = cos(2.0 * pi * x / a)
     coy = cos(2.0 * pi * y / a)
     coz = cos(2.0 * pi * z / a)

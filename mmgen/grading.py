@@ -1,3 +1,5 @@
+"""Thickness grading specifications and evaluators."""
+
 from typing import Any, Callable, Literal
 
 import numpy as np
@@ -9,11 +11,48 @@ GradingFunc = Callable[[np.ndarray], np.ndarray]
 
 
 class GradingSpec(BaseModel):
+    """Validated description of a thickness grading law.
+
+    Attributes
+    ----------
+    kind : {"constant", "affine", "radial"}
+        Grading model family.
+    params : dict[str, Any]
+        Model-specific parameters validated according to ``kind``.
+
+    Notes
+    -----
+    Parameter options by ``kind``:
+
+    ``constant``
+        Required: ``t``.
+
+    ``affine``
+        Optional: ``a``, ``bx``, ``by``, ``bz``, ``tmin``, ``tmax``.
+        Formula: ``t(x, y, z) = a + bx*x + by*y + bz*z`` with optional clamping.
+
+    ``radial``
+        Required: ``radius``, ``t_center``, ``t_outer``.
+        Optional: ``center`` (defaults to ``(0.0, 0.0, 0.0)``).
+    """
+
     kind: Literal["constant", "affine", "radial"]
     params: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_params(self) -> "GradingSpec":
+        """Validate and normalize grading parameters in-place.
+
+        Returns
+        -------
+        GradingSpec
+            The current instance with normalized numeric parameters.
+
+        Raises
+        ------
+        ValueError
+            If required parameters are missing, malformed, or inconsistent.
+        """
         k = self.kind
         p = dict(self.params)
 
@@ -68,6 +107,22 @@ class GradingSpec(BaseModel):
 
     @staticmethod
     def _reject_unknown_params(params: dict[str, Any], allowed: set[str], kind: str) -> None:
+        """Raise when unknown keys are found for the selected grading kind.
+
+        Parameters
+        ----------
+        params : dict[str, Any]
+            User-provided parameter dictionary.
+        allowed : set[str]
+            Allowed keys for the grading kind.
+        kind : str
+            Grading kind name used for the error message.
+
+        Raises
+        ------
+        ValueError
+            If ``params`` contains keys that are not in ``allowed``.
+        """
         unknown = set(params) - allowed
         if unknown:
             raise ValueError(
@@ -76,6 +131,25 @@ class GradingSpec(BaseModel):
 
     @staticmethod
     def _as_float(value: Any, name: str) -> float:
+        """Convert a value to ``float`` with a consistent validation error.
+
+        Parameters
+        ----------
+        value : Any
+            Value to convert.
+        name : str
+            Parameter name for diagnostics.
+
+        Returns
+        -------
+        float
+            Converted float value.
+
+        Raises
+        ------
+        ValueError
+            If conversion fails.
+        """
         try:
             return float(value)
         except (TypeError, ValueError) as e:
@@ -83,6 +157,38 @@ class GradingSpec(BaseModel):
 
 
 def grading_from_spec(spec: GradingSpec) -> GradingFunc:
+    """Build a vectorized thickness function from a grading specification.
+
+    Parameters
+    ----------
+    spec : GradingSpec
+        Validated grading specification.
+
+    Returns
+    -------
+    GradingFunc
+        Callable mapping ``(N, 3)`` points to ``(N,)`` thickness values.
+
+    Raises
+    ------
+    ValueError
+        If the grading kind is unknown.
+
+    Notes
+    -----
+    Implemented grading functions:
+
+    ``constant``
+        Returns a constant vector of ``t``.
+
+    ``affine``
+        Computes ``a + bx*x + by*y + bz*z`` and optionally clamps to
+        ``[tmin, tmax]``.
+
+    ``radial``
+        Interpolates from ``t_center`` to ``t_outer`` based on normalized
+        distance from ``center``, saturated at ``radius``.
+    """
     k = spec.kind
     p = spec.params
 

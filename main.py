@@ -20,7 +20,13 @@ LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
 
 
 def configure_console_logging(level: str = "INFO") -> None:
-    """Example: standard console logging."""
+    """Configure root logging to write to stderr.
+
+    Parameters
+    ----------
+    level : str, optional
+        Logging level name.
+    """
     logging.basicConfig(
         level=level.upper(),
         format=LOG_FORMAT,
@@ -28,7 +34,13 @@ def configure_console_logging(level: str = "INFO") -> None:
 
 
 def configure_file_logging(log_path: str = "mmgen.log") -> None:
-    """Example: write logs to a file."""
+    """Configure root logging to write to a file.
+
+    Parameters
+    ----------
+    log_path : str, optional
+        Output log file path.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format=LOG_FORMAT,
@@ -38,7 +50,7 @@ def configure_file_logging(log_path: str = "mmgen.log") -> None:
 
 
 def configure_warning_only_logging() -> None:
-    """Example: suppress INFO/DEBUG by setting level to WARNING."""
+    """Configure root logging at ``WARNING`` level."""
     logging.basicConfig(
         level=logging.WARNING,
         format=LOG_FORMAT,
@@ -46,9 +58,11 @@ def configure_warning_only_logging() -> None:
 
 
 def test_basic_gyroid():
-    """Generates a simple Gyroid block with constant thickness.
+    """Generate a gyroid example with constant thickness.
 
-    Example of passing an explicit logger to TPMSGenerator.
+    Notes
+    -----
+    This is a sample workflow that demonstrates passing a dedicated logger.
     """
     config = GenerationConfig(
         lattice=LatticeConfig(type=TPMSType.GYROID, cell_size=10.0),
@@ -65,9 +79,11 @@ def test_basic_gyroid():
     gen.export(mesh, "basic_gyroid.stl")
 
 def test_basic_lidinoid():
-    """Generates a simple Gyroid block with constant thickness.
+    """Generate a lidinoid example with lids and affine grading.
 
-    Example of passing an explicit logger to TPMSGenerator.
+    Notes
+    -----
+    This is a sample workflow that demonstrates passing a dedicated logger.
     """
     config = GenerationConfig(
         lattice=LatticeConfig(type="lidinoid", cell_size=10.0),
@@ -91,7 +107,7 @@ def test_basic_lidinoid():
 
 
 def test_graded_schwarz_p():
-    """Generates a graded Schwarz P block."""
+    """Generate a Schwarz-P example with affine thickness grading."""
     config = GenerationConfig(
         lattice=LatticeConfig(type="schwarz_p", cell_size=10.0),
         sampling=SamplingConfig(voxels_per_cell=30),
@@ -114,7 +130,7 @@ def test_graded_schwarz_p():
 
 
 def test_lids_with_benchy():
-    """Generates a Lidinoid pattern with lids at the bottom and top, intersected with Benchy."""
+    """Generate lidinoid with top/bottom lids, clipped by Benchy when available."""
     benchy_path = "3DBenchy.stl"
 
     config = GenerationConfig(
@@ -137,7 +153,7 @@ def test_lids_with_benchy():
 
 
 def test_lidinoid_with_benchy():
-    """Generates a Lidinoid pattern intersected with a Benchy STL if available."""
+    """Generate lidinoid clipped by Benchy when available."""
     benchy_path = "3DBenchy.stl"
 
     config = GenerationConfig(
@@ -159,6 +175,26 @@ def test_lidinoid_with_benchy():
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse CLI options for sample generation workflows.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed CLI arguments.
+
+    Notes
+    -----
+    CLI options:
+
+    ``--log-mode``
+        One of ``console``, ``file``, or ``warning``.
+
+    ``--log-level``
+        Logging level string used when ``--log-mode=console``.
+
+    ``--log-file``
+        Output path used when ``--log-mode=file``.
+    """
     parser = argparse.ArgumentParser(description="Run MMGen sample generation workflows.")
     parser.add_argument(
         "--log-mode",

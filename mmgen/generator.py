@@ -1,3 +1,5 @@
+"""Core TPMS mesh generation pipeline."""
+
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
@@ -14,12 +16,58 @@ from .utils import mesh_intersection, mesh_union
 
 @dataclass
 class MeshQualityMetadata:
+    """Quality metadata captured for a generated mesh.
+
+    Attributes
+    ----------
+    triangle_count : int
+        Number of mesh faces.
+    bbox : tuple[tuple[float, float, float], tuple[float, float, float]]
+        Axis-aligned bounding box as ``(min_xyz, max_xyz)``.
+    is_watertight : bool or None
+        Watertightness result when checked, otherwise ``None``.
+    warnings : list[str]
+        Non-fatal quality warnings gathered during validation.
+    """
+
     triangle_count: int
     bbox: tuple[tuple[float, float, float], tuple[float, float, float]]
     is_watertight: bool | None
     warnings: list[str] = field(default_factory=list)
 
 class TPMSGenerator:
+    """Generate TPMS meshes from validated configuration models.
+
+    Parameters
+    ----------
+    config : GenerationConfig
+        Full generation configuration.
+    target_geometry_path : Path or None, optional
+        Optional path to a target geometry file used for final intersection.
+    target_mesh : trimesh.Trimesh or None, optional
+        Optional in-memory target mesh used for final intersection.
+    logger : logging.Logger or None, optional
+        Logger instance used for diagnostics.
+    log_level : int or str or None, optional
+        Optional logger level override.
+
+    Raises
+    ------
+    ValueError
+        If both ``target_geometry_path`` and ``target_mesh`` are provided.
+
+    Notes
+    -----
+    High-level workflow in :meth:`generate_mesh`:
+    1. Evaluate TPMS field on a voxel grid.
+    2. Extract an isosurface with marching cubes.
+    3. Optionally union face lids.
+    4. Build or load target geometry.
+    5. Optionally clip target geometry to the configured domain.
+    6. Intersect TPMS and target meshes.
+    7. Validate mesh quality and return metadata.
+    """
+
     def __init__(
         self,
         config: GenerationConfig,
@@ -28,6 +76,21 @@ class TPMSGenerator:
         logger: logging.Logger | None = None,
         log_level: int | str | None = None,
     ):
+        """Initialize a TPMS generator instance.
+
+        Parameters
+        ----------
+        config : GenerationConfig
+            Full generation configuration.
+        target_geometry_path : Path or None, optional
+            Optional path to a target geometry file used for final intersection.
+        target_mesh : trimesh.Trimesh or None, optional
+            Optional in-memory target mesh used for final intersection.
+        logger : logging.Logger or None, optional
+            Logger instance used for diagnostics.
+        log_level : int or str or None, optional
+            Optional logger level override.
+        """
         self.config = config
         self.domain = config.geometry.domain
         self.lattice = config.lattice
@@ -52,6 +115,23 @@ class TPMSGenerator:
 
     @staticmethod
     def _normalize_log_level(log_level: int | str) -> int:
+        """Normalize integer or named logging level to its integer value.
+
+        Parameters
+        ----------
+        log_level : int or str
+            Logging level as numeric value or name (for example ``"INFO"``).
+
+        Returns
+        -------
+        int
+            Integer logging level.
+
+        Raises
+        ------
+        ValueError
+            If the level name is unknown.
+        """
         if isinstance(log_level, int):
             return log_level
         if isinstance(log_level, str):
@@ -61,7 +141,13 @@ class TPMSGenerator:
         raise ValueError(f"Invalid log level: {log_level!r}")
             
     def generate_grid(self):
-        """Generates the 3D grid based on domain and resolution."""
+        """Generate sampling grids spanning the domain plus configured margin.
+
+        Notes
+        -----
+        The generated arrays are stored on the instance as ``self.x``, ``self.y``,
+        and ``self.z``.
+        """
         # Expand domain slightly to ensure crisp boundaries during clipping/intersection
         margin = self.lattice.cell_size * self.sampling.margin_cells
         
@@ -78,7 +164,13 @@ class TPMSGenerator:
         ]
         
     def evaluate_field(self) -> np.ndarray:
-        """Evaluates the scalar field based on the selected TPMS and grading."""
+        """Evaluate the graded TPMS scalar field on the current sampling grid.
+
+        Returns
+        -------
+        ndarray
+            Scalar field values with the same shape as ``self.x``.
+        """
         eq_func = TPMS_REGISTRY[self.lattice.type]
         
         # Base TPMS value (without level-set 't')
@@ -95,7 +187,13 @@ class TPMSGenerator:
         return final_field
 
     def apply_boundary_conditions(self, vol: np.ndarray):
-        """Ensures vol = 1 at coordinates boundaries to close the mesh (as in graded_tpms.py)."""
+        """Force boundary voxels positive to encourage closed marching-cubes output.
+
+        Parameters
+        ----------
+        vol : ndarray
+            Scalar field volume modified in place.
+        """
         # This is a trick to make marching cubes produce a closed mesh at the box boundaries
         vol[0, :, :] = 1.0
         vol[-1, :, :] = 1.0
@@ -105,7 +203,13 @@ class TPMSGenerator:
         vol[:, :, -1] = 1.0
 
     def generate_raw_mesh(self) -> trimesh.Trimesh:
-        """Runs marching cubes to create the initial TPMS mesh."""
+        """Run marching cubes to generate an unclipped TPMS mesh.
+
+        Returns
+        -------
+        trimesh.Trimesh
+            Raw TPMS mesh before target clipping and lid boolean operations.
+        """
         self.generate_grid()
         vol = self.evaluate_field()
         self.apply_boundary_conditions(vol)
@@ -131,7 +235,25 @@ class TPMSGenerator:
         return mesh
 
     def get_target_mesh(self) -> trimesh.Trimesh:
-        """Loads target geometry or creates a default box."""
+        """Load or create the mesh used as final clipping target.
+
+        Returns
+        -------
+        trimesh.Trimesh
+            Target mesh in centered coordinates when configured.
+
+        Raises
+        ------
+        ValueError
+            If a loaded scene contains no geometry.
+
+        Notes
+        -----
+        Source selection order:
+        1. ``target_mesh`` argument (copied).
+        2. ``target_geometry_path`` (loaded from disk).
+        3. Fallback domain-aligned box primitive.
+        """
         if self.target_mesh is not None:
             self.logger.info("Using provided target mesh.")
             mesh = self.target_mesh.copy()
@@ -171,7 +293,25 @@ class TPMSGenerator:
         return mesh
 
     def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh | None:
-        """Generates a solid box for the specified lid (Centered Coordinates)."""
+        """Create a rectangular lid mesh aligned to one domain face.
+
+        Parameters
+        ----------
+        side : str
+            Face identifier (for example ``"x_min"`` or ``"z_max"``).
+        thickness : float
+            Lid thickness in millimeters.
+
+        Returns
+        -------
+        trimesh.Trimesh or None
+            Generated lid mesh, or ``None`` for unknown ``side``.
+
+        Notes
+        -----
+        Supported ``side`` values are ``x_min``, ``x_max``, ``y_min``,
+        ``y_max``, ``z_min``, and ``z_max``.
+        """
         l, w, h = self.domain.length, self.domain.width, self.domain.height
         
         # Margin to ensure overlap
@@ -223,6 +363,22 @@ class TPMSGenerator:
     def _compute_metadata(
         mesh: trimesh.Trimesh, check_watertight: bool, warnings: list[str]
     ) -> MeshQualityMetadata:
+        """Build metadata summary for a generated mesh.
+
+        Parameters
+        ----------
+        mesh : trimesh.Trimesh
+            Mesh to summarize.
+        check_watertight : bool
+            Whether ``mesh.is_watertight`` should be queried.
+        warnings : list[str]
+            Accumulated non-fatal warnings.
+
+        Returns
+        -------
+        MeshQualityMetadata
+            Mesh quality metadata.
+        """
         bounds = np.asarray(mesh.bounds, dtype=float)
         bbox = (
             tuple(float(v) for v in bounds[0]),
@@ -243,6 +399,28 @@ class TPMSGenerator:
         allow_nonwatertight: bool,
         check_watertight: bool,
     ) -> MeshQualityMetadata:
+        """Validate core mesh quality constraints and return metadata.
+
+        Parameters
+        ----------
+        mesh : trimesh.Trimesh
+            Mesh to validate.
+        allow_nonwatertight : bool
+            Whether non-watertight meshes are allowed with warning metadata.
+        check_watertight : bool
+            Whether watertightness should be evaluated.
+
+        Returns
+        -------
+        MeshQualityMetadata
+            Validation metadata and warnings.
+
+        Raises
+        ------
+        ValueError
+            If the mesh is empty, contains non-finite vertices, or fails
+            watertightness requirements.
+        """
         if len(mesh.vertices) == 0 or len(mesh.faces) == 0:
             raise ValueError("Generated mesh is empty: expected non-empty vertices and faces.")
 
@@ -268,7 +446,31 @@ class TPMSGenerator:
         allow_nonwatertight: bool = False,
         check_watertight: bool = True,
     ) -> tuple[trimesh.Trimesh, MeshQualityMetadata]:
-        """Executes the full mesh generation and intersection process."""
+        """Generate, combine, clip, and validate a TPMS mesh.
+
+        Parameters
+        ----------
+        allow_nonwatertight : bool, optional
+            Allow non-watertight output with warning metadata.
+        check_watertight : bool, optional
+            Evaluate watertightness during quality validation.
+
+        Returns
+        -------
+        tuple[trimesh.Trimesh, MeshQualityMetadata]
+            Final mesh and associated quality metadata.
+
+        Notes
+        -----
+        Main behavior toggles:
+
+        ``allow_nonwatertight``
+            If ``True``, non-watertight meshes are returned with warning metadata.
+
+        ``check_watertight``
+            If ``False``, watertightness is not queried and metadata contains
+            ``is_watertight=None``.
+        """
         self.logger.info("Generating TPMS: %s", self.lattice.type.name)
         tpms_mesh = self.generate_raw_mesh()
 
@@ -314,7 +516,20 @@ class TPMSGenerator:
         return final_mesh, metadata
 
     def export(self, mesh: trimesh.Trimesh, output_path: Path) -> Path:
-        """Exports a mesh to disk and returns the written path."""
+        """Export a mesh and return the output path.
+
+        Parameters
+        ----------
+        mesh : trimesh.Trimesh
+            Mesh to write.
+        output_path : Path
+            Destination file path.
+
+        Returns
+        -------
+        Path
+            Path written to disk.
+        """
         path = Path(output_path)
         mesh.export(path)
         self.logger.info("Mesh saved to %s", path)
