@@ -41,7 +41,9 @@ The field is evaluated as: $V = f(x,y,z) - t(x,y,z)^2$.
 
 ### GeneratorConfig
 - Combines the above parameters.
-- `target_geometry`: If provided (path to STL), the TPMS will be intersected with this geometry using Manifold3D. If not provided, it intersects with a block defined by the domain.
+- `target_geometry_path`: Optional path to target geometry.
+- `target_mesh`: Optional preloaded `trimesh.Trimesh`.
+- Provide at most one of `target_geometry_path` or `target_mesh`; if neither is provided, intersection defaults to a domain-sized box.
 
 ## Intersection with Manifold3D
 

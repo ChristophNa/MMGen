@@ -20,12 +20,21 @@ class MeshQualityMetadata:
     warnings: list[str] = field(default_factory=list)
 
 class TPMSGenerator:
-    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingSpec], 
-                 target_geometry: str = None):
+    def __init__(
+        self,
+        config: GeneratorConfig,
+        thickness: Union[float, GradingSpec],
+        target_geometry_path: Path | None = None,
+        target_mesh: trimesh.Trimesh | None = None,
+    ):
         self.config = config
         self.domain = config.domain
         self.tpms_params = config.tpms
-        self.target_geometry = target_geometry
+        self.target_geometry_path = Path(target_geometry_path) if target_geometry_path is not None else None
+        self.target_mesh = target_mesh
+
+        if self.target_geometry_path is not None and self.target_mesh is not None:
+            raise ValueError("Provide either target_geometry_path or target_mesh, not both.")
         
         if isinstance(thickness, (float, int)):
             self.grading_spec = GradingSpec(kind="constant", params={"t": float(thickness)})
@@ -109,32 +118,42 @@ class TPMSGenerator:
 
     def get_target_mesh(self) -> trimesh.Trimesh:
         """Loads target geometry or creates a default box."""
-        if self.target_geometry:
-            print(f"Loading target geometry from: {self.target_geometry}")
-            mesh = trimesh.load_mesh(self.target_geometry)
+        if self.target_mesh is not None:
+            print("Using provided target mesh.")
+            mesh = self.target_mesh.copy()
+        elif self.target_geometry_path is not None:
+            print(f"Loading target geometry from: {self.target_geometry_path}")
+            mesh = trimesh.load_mesh(self.target_geometry_path)
             print(f"Loaded mesh type: {type(mesh)}")
-            
-            # Handle Scene object if returned
-            if isinstance(mesh, trimesh.Scene):
-                print("Target is a Scene, dumping to single mesh...")
-                if len(mesh.geometry) == 0:
-                     raise ValueError("Loaded Scene is empty!")
-                # Concatenate all geometries in the scene
-                mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
-                
-            print(f"Mesh vertices: {mesh.vertices.shape}")
-            print(f"Mesh bounds: {mesh.bounds}")
-            
-            # Center the target mesh at the origin
-            # mesh.bounding_box might trigger generation, bounds is property
-            if mesh.bounds is None:
-                print("Warning: Mesh bounds are None!")
-            
-            mesh.vertices -= mesh.bounding_box.centroid
-            return mesh
         else:
             # Create a box matching the domain, centered at [0,0,0] by default
             return trimesh.primitives.Box(extents=(self.domain.length, self.domain.width, self.domain.height))
+
+        # Handle Scene object if returned
+        if isinstance(mesh, trimesh.Scene):
+            print("Target is a Scene, dumping to single mesh...")
+            if len(mesh.geometry) == 0:
+                 raise ValueError("Loaded Scene is empty!")
+            # Concatenate all geometries in the scene
+            mesh = trimesh.util.concatenate(tuple(mesh.geometry.values()))
+
+        # Normalize to a mutable Trimesh (primitives can be immutable).
+        mesh = trimesh.Trimesh(
+            vertices=np.asarray(mesh.vertices, dtype=float).copy(),
+            faces=np.asarray(mesh.faces).copy(),
+            process=False,
+        )
+
+        print(f"Mesh vertices: {mesh.vertices.shape}")
+        print(f"Mesh bounds: {mesh.bounds}")
+
+        # Center the target mesh at the origin
+        # mesh.bounding_box might trigger generation, bounds is property
+        if mesh.bounds is None:
+            print("Warning: Mesh bounds are None!")
+
+        mesh.vertices -= mesh.bounding_box.centroid
+        return mesh
 
     def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh:
         """Generates a solid box for the specified lid (Centered Coordinates)."""

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 from mmgen.config import DomainConfig, GeneratorConfig, TPMSParams
 from mmgen.generator import TPMSGenerator
@@ -50,7 +51,7 @@ def test_lids_with_benchy():
     gen = TPMSGenerator(
         config,
         thickness=0.5,
-        target_geometry=target_geom,
+        target_geometry_path=Path(target_geom) if target_geom else None,
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     print(f"Metadata: {metadata}")
@@ -69,7 +70,7 @@ def test_lidinoid_with_benchy():
     gen = TPMSGenerator(
         config,
         thickness=0.5,
-        target_geometry=target_geom,
+        target_geometry_path=Path(target_geom) if target_geom else None,
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     print(f"Metadata: {metadata}")

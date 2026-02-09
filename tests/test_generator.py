@@ -76,7 +76,7 @@ def test_lidinoid_with_target(tmp_path):
     gen = TPMSGenerator(
         config,
         thickness=0.5,
-        target_geometry=str(dummy_target),
+        target_geometry_path=dummy_target,
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
@@ -117,6 +117,39 @@ def test_grading_spec_radial(tmp_path):
     assert metadata.triangle_count > 0
     assert isinstance(metadata.warnings, list)
     assert np.isfinite(np.asarray(metadata.bbox)).all()
+
+
+def test_target_mesh_argument():
+    """Generates using an already-loaded target mesh."""
+    config = GeneratorConfig(
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
+        domain=DomainConfig(length=20, width=20, height=20),
+    )
+    target = trimesh.primitives.Box(extents=(10, 10, 10))
+
+    gen = TPMSGenerator(config, thickness=0.5, target_mesh=target)
+    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
+
+    assert isinstance(mesh, trimesh.Trimesh)
+    assert isinstance(metadata, MeshQualityMetadata)
+    assert not mesh.is_empty
+
+
+def test_target_geometry_path_and_target_mesh_are_mutually_exclusive(tmp_path):
+    config = GeneratorConfig(
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
+        domain=DomainConfig(length=20, width=20, height=20),
+    )
+    dummy_target = tmp_path / "dummy_target.stl"
+    trimesh.primitives.Box(extents=(10, 10, 10)).export(dummy_target)
+
+    with pytest.raises(ValueError, match="either target_geometry_path or target_mesh"):
+        TPMSGenerator(
+            config,
+            thickness=0.5,
+            target_geometry_path=dummy_target,
+            target_mesh=trimesh.primitives.Box(extents=(8, 8, 8)),
+        )
 
 
 def test_missing_thickness_error():
