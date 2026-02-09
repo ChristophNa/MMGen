@@ -1,6 +1,8 @@
 """Mesh utility helpers for boolean operations and exports."""
 
 import os
+from typing import Protocol, cast
+
 import trimesh
 import numpy as np
 
@@ -10,7 +12,26 @@ _MANIFOLD_INSTALL_MSG = (
 )
 
 
-def _load_manifold():
+class _ManifoldMeshLike(Protocol):
+    vert_properties: np.ndarray
+    tri_verts: np.ndarray
+
+
+class _ManifoldLike(Protocol):
+    def __xor__(self, other: "_ManifoldLike") -> "_ManifoldLike": ...
+    def __add__(self, other: "_ManifoldLike") -> "_ManifoldLike": ...
+    def to_mesh(self) -> _ManifoldMeshLike: ...
+
+
+class _ManifoldCtor(Protocol):
+    def __call__(self, mesh: _ManifoldMeshLike) -> _ManifoldLike: ...
+
+
+class _MeshCtor(Protocol):
+    def __call__(self, *, vert_properties: np.ndarray, tri_verts: np.ndarray) -> _ManifoldMeshLike: ...
+
+
+def _load_manifold() -> tuple[_ManifoldCtor, _MeshCtor]:
     """Import manifold3d types used by boolean operations.
 
     Returns
@@ -27,10 +48,10 @@ def _load_manifold():
         from manifold3d import Manifold, Mesh
     except ImportError as exc:
         raise ImportError(_MANIFOLD_INSTALL_MSG) from exc
-    return Manifold, Mesh
+    return cast(tuple[_ManifoldCtor, _MeshCtor], (Manifold, Mesh))
 
 
-def _to_manifold(mesh: trimesh.Trimesh):
+def _to_manifold(mesh: trimesh.Trimesh) -> _ManifoldLike:
     """Convert a trimesh mesh into a manifold3d manifold object.
 
     Parameters
@@ -40,8 +61,8 @@ def _to_manifold(mesh: trimesh.Trimesh):
 
     Returns
     -------
-    Any
-        manifold3d manifold instance.
+    _ManifoldLike
+        Manifold-like wrapper around the input mesh.
     """
     Manifold, Mesh = _load_manifold()
     verts = np.array(mesh.vertices, dtype=np.float32)
@@ -49,13 +70,13 @@ def _to_manifold(mesh: trimesh.Trimesh):
     return Manifold(Mesh(vert_properties=verts, tri_verts=faces))
 
 
-def _to_trimesh(mesh):
+def _to_trimesh(mesh: _ManifoldMeshLike) -> trimesh.Trimesh:
     """Convert a manifold3d mesh payload back to ``trimesh.Trimesh``.
 
     Parameters
     ----------
-    mesh : Any
-        manifold3d mesh payload exposing ``vert_properties`` and ``tri_verts``.
+    mesh : _ManifoldMeshLike
+        Manifold mesh payload exposing ``vert_properties`` and ``tri_verts``.
 
     Returns
     -------
@@ -103,7 +124,7 @@ def mesh_union(mesh_a: trimesh.Trimesh, mesh_b: trimesh.Trimesh) -> trimesh.Trim
     m_b = _to_manifold(mesh_b)
     return _to_trimesh((m_a + m_b).to_mesh())
 
-def export_mesh(mesh: trimesh.Trimesh, path: str):
+def export_mesh(mesh: trimesh.Trimesh, path: str) -> None:
     """Export a mesh to disk.
 
     Parameters
@@ -132,7 +153,7 @@ def export_mesh(mesh: trimesh.Trimesh, path: str):
         # Generic export for STL, 3MF, etc.
         mesh.export(path)
 
-def ensure_dir(path: str):
+def ensure_dir(path: str) -> None:
     """Ensure the parent directory for a path exists.
 
     Parameters

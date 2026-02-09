@@ -1,6 +1,4 @@
 """Configuration models for TPMS mesh generation."""
-
-from typing import Any
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from .grading import GradingSpec
@@ -30,36 +28,38 @@ class LatticeConfig(BaseModel):
 
     @field_validator("type", mode="before")
     @classmethod
-    def parse_tpms_type(cls, v: Any) -> Any:
+    def parse_tpms_type(cls, v: str | TPMSType) -> TPMSType:
         """Parse a TPMS type value from enum or case-insensitive string.
 
         Parameters
         ----------
-        v : Any
+        v : str | TPMSType
             Candidate TPMS type value.
 
         Returns
         -------
-        Any
-            Parsed enum value or the original value for downstream validation.
+        TPMSType
+            Parsed enum value.
 
         Raises
         ------
         ValueError
-            If a string value does not match any known TPMS type.
+            If the value is not a supported TPMS enum or enum-name string.
 
         Notes
         -----
         Parsing uses enum *names* (for example ``"SCHWARZ_P"``), not free-form labels.
         """
         # Allow: TPMSType.GYROID (already ok), "GYROID", "gyroid"
+        if isinstance(v, TPMSType):
+            return v
         if isinstance(v, str):
             key = v.strip().upper()
             try:
                 return TPMSType[key]     # by name
             except KeyError as e:
                 raise ValueError(f"Unknown TPMSType '{v}'. Allowed: {[m.name for m in TPMSType]}") from e
-        return v
+        raise ValueError(f"TPMS type must be str or TPMSType, got {type(v).__name__}")
 
 
 class SamplingConfig(BaseModel):
