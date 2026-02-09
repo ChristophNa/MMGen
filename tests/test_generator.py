@@ -1,4 +1,5 @@
 import hashlib
+import logging
 
 import numpy as np
 import pytest
@@ -49,54 +50,50 @@ def _mesh_signature(mesh: trimesh.Trimesh) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def test_basic_gyroid(tmp_path):
-    output_path = tmp_path / "basic_gyroid.stl"
-    config = _base_config(
-        tpms_type=TPMSType.GYROID,
-        voxels_per_cell=30,
-        domain=DomainConfig(length=30, width=30, height=30),
-        thickness=0.5,
-    )
-
-    gen = TPMSGenerator(config)
-    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
-    written = gen.export(mesh, output_path)
-
+def _assert_mesh_and_metadata(mesh: trimesh.Trimesh, metadata: MeshQualityMetadata) -> None:
     assert isinstance(mesh, trimesh.Trimesh)
     assert isinstance(metadata, MeshQualityMetadata)
     assert not mesh.is_empty
     assert metadata.triangle_count > 0
     assert isinstance(metadata.warnings, list)
     assert np.isfinite(np.asarray(metadata.bbox)).all()
-    assert written == output_path
-    assert output_path.exists()
 
 
-def test_graded_schwarz_p(tmp_path):
-    output_path = tmp_path / "graded_schwarz_p.stl"
-    grading_spec = GradingSpec(
-        kind="affine",
-        params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
-    )
+@pytest.mark.parametrize(
+    ("tpms_type", "thickness"),
+    [
+        (TPMSType.GYROID, 0.5),
+        (
+            TPMSType.SCHWARZ_P,
+            GradingSpec(
+                kind="affine",
+                params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
+            ),
+        ),
+        (
+            TPMSType.GYROID,
+            GradingSpec(
+                kind="radial",
+                params={
+                    "t_center": 0.2,
+                    "t_outer": 0.8,
+                    "center": (10, 10, 10),
+                    "radius": 10.0,
+                },
+            ),
+        ),
+    ],
+)
+def test_tpms_smoke_cases(tpms_type: TPMSType, thickness: float | GradingSpec):
     config = _base_config(
-        tpms_type=TPMSType.SCHWARZ_P,
-        voxels_per_cell=30,
-        domain=DomainConfig(length=50, width=20, height=20),
-        thickness=grading_spec,
+        tpms_type=tpms_type,
+        voxels_per_cell=20,
+        domain=DomainConfig(length=30, width=20, height=20),
+        thickness=thickness,
     )
 
-    gen = TPMSGenerator(config)
-    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
-    written = gen.export(mesh, output_path)
-
-    assert isinstance(mesh, trimesh.Trimesh)
-    assert isinstance(metadata, MeshQualityMetadata)
-    assert not mesh.is_empty
-    assert metadata.triangle_count > 0
-    assert isinstance(metadata.warnings, list)
-    assert np.isfinite(np.asarray(metadata.bbox)).all()
-    assert written == output_path
-    assert output_path.exists()
+    mesh, metadata = TPMSGenerator(config).generate_mesh(allow_nonwatertight=True)
+    _assert_mesh_and_metadata(mesh, metadata)
 
 
 def test_lidinoid_with_target(tmp_path):
@@ -114,19 +111,11 @@ def test_lidinoid_with_target(tmp_path):
         thickness=0.5,
     )
 
-    gen = TPMSGenerator(
-        config,
-        target_geometry_path=dummy_target,
-    )
+    gen = TPMSGenerator(config, target_geometry_path=dummy_target)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
 
-    assert isinstance(mesh, trimesh.Trimesh)
-    assert isinstance(metadata, MeshQualityMetadata)
-    assert not mesh.is_empty
-    assert metadata.triangle_count > 0
-    assert isinstance(metadata.warnings, list)
-    assert np.isfinite(np.asarray(metadata.bbox)).all()
+    _assert_mesh_and_metadata(mesh, metadata)
     assert written == output_path
     assert output_path.exists()
 
@@ -146,13 +135,8 @@ def test_fast_cylinder_target_stl_invariants(tmp_path):
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     written = gen.export(mesh, output_path)
 
-    assert isinstance(mesh, trimesh.Trimesh)
-    assert isinstance(metadata, MeshQualityMetadata)
-    assert len(mesh.vertices) > 0
-    assert len(mesh.faces) > 0
-    assert metadata.triangle_count > 0
+    _assert_mesh_and_metadata(mesh, metadata)
     assert np.isfinite(np.asarray(mesh.vertices)).all()
-    assert np.isfinite(np.asarray(metadata.bbox)).all()
 
     radial = np.sqrt(mesh.vertices[:, 0] ** 2 + mesh.vertices[:, 1] ** 2)
     assert float(np.max(radial)) <= 6.05
@@ -170,55 +154,16 @@ def test_fast_cylinder_target_stl_invariants(tmp_path):
     assert np.allclose(reloaded.bounds, mesh.bounds, atol=1e-3)
 
 
-def test_grading_spec_radial(tmp_path):
-    config = _base_config(
-        tpms_type=TPMSType.GYROID,
-        voxels_per_cell=20,
-        domain=DomainConfig(length=20, width=20, height=20),
-        thickness=GradingSpec(
-            kind="radial",
-            params={
-                "t_center": 0.2,
-                "t_outer": 0.8,
-                "center": (10, 10, 10),
-                "radius": 10.0,
-            },
-        ),
-    )
-
-    gen = TPMSGenerator(config)
-    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
-
-    assert isinstance(mesh, trimesh.Trimesh)
-    assert isinstance(metadata, MeshQualityMetadata)
-    assert not mesh.is_empty
-    assert metadata.triangle_count > 0
-    assert isinstance(metadata.warnings, list)
-    assert np.isfinite(np.asarray(metadata.bbox)).all()
-
-
 def test_target_mesh_argument():
-    config = _base_config(
-        tpms_type=TPMSType.GYROID,
-        voxels_per_cell=20,
-        domain=DomainConfig(length=20, width=20, height=20),
-    )
+    config = _base_config(tpms_type=TPMSType.GYROID, voxels_per_cell=20)
     target = trimesh.primitives.Box(extents=(10, 10, 10))
 
-    gen = TPMSGenerator(config, target_mesh=target)
-    mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
-
-    assert isinstance(mesh, trimesh.Trimesh)
-    assert isinstance(metadata, MeshQualityMetadata)
-    assert not mesh.is_empty
+    mesh, metadata = TPMSGenerator(config, target_mesh=target).generate_mesh(allow_nonwatertight=True)
+    _assert_mesh_and_metadata(mesh, metadata)
 
 
 def test_target_geometry_path_and_target_mesh_are_mutually_exclusive(tmp_path):
-    config = _base_config(
-        tpms_type=TPMSType.GYROID,
-        voxels_per_cell=20,
-        domain=DomainConfig(length=20, width=20, height=20),
-    )
+    config = _base_config(tpms_type=TPMSType.GYROID, voxels_per_cell=20)
     dummy_target = tmp_path / "dummy_target.stl"
     trimesh.primitives.Box(extents=(10, 10, 10)).export(dummy_target)
 
@@ -419,14 +364,8 @@ def test_clip_target_to_domain_toggle_affects_output_bounds():
     domain = DomainConfig(length=20, width=20, height=20)
     large_target = trimesh.primitives.Box(extents=(200, 200, 200))
 
-    clipped = _base_config(
-        domain=domain,
-        booleans=BooleanConfig(clip_target_to_domain=True),
-    )
-    unclipped = _base_config(
-        domain=domain,
-        booleans=BooleanConfig(clip_target_to_domain=False),
-    )
+    clipped = _base_config(domain=domain, booleans=BooleanConfig(clip_target_to_domain=True))
+    unclipped = _base_config(domain=domain, booleans=BooleanConfig(clip_target_to_domain=False))
 
     clipped_mesh, _ = TPMSGenerator(clipped, target_mesh=large_target).generate_mesh(allow_nonwatertight=True)
     unclipped_mesh, _ = TPMSGenerator(unclipped, target_mesh=large_target).generate_mesh(allow_nonwatertight=True)
@@ -436,3 +375,49 @@ def test_clip_target_to_domain_toggle_affects_output_bounds():
 
     assert clipped_extent_x <= domain.length + 1e-6
     assert unclipped_extent_x > domain.length
+
+
+def test_default_target_mesh_matches_domain_bounds():
+    domain = DomainConfig(length=12, width=14, height=16)
+    config = _base_config(domain=domain)
+
+    target = TPMSGenerator(config).get_target_mesh()
+
+    assert isinstance(target, trimesh.Trimesh)
+    assert np.allclose(target.extents, np.array([12.0, 14.0, 16.0]))
+    assert np.allclose(target.bounding_box.centroid, np.zeros(3), atol=1e-8)
+
+
+def test_get_target_mesh_concatenates_scene(monkeypatch, tmp_path):
+    config = _base_config()
+    scene = trimesh.Scene()
+    scene.add_geometry(trimesh.creation.box(extents=(2, 2, 2)))
+    scene.add_geometry(trimesh.creation.box(extents=(2, 2, 2), transform=trimesh.transformations.translation_matrix([3, 0, 0])))
+
+    monkeypatch.setattr(trimesh, "load_mesh", lambda _: scene)
+
+    mesh = TPMSGenerator(config, target_geometry_path=tmp_path / "dummy.stl").get_target_mesh()
+
+    assert isinstance(mesh, trimesh.Trimesh)
+    assert len(mesh.vertices) > 8
+    assert len(mesh.faces) > 12
+
+
+def test_get_target_mesh_rejects_empty_scene(monkeypatch, tmp_path):
+    config = _base_config()
+    monkeypatch.setattr(trimesh, "load_mesh", lambda _: trimesh.Scene())
+
+    with pytest.raises(ValueError, match="Scene is empty"):
+        TPMSGenerator(config, target_geometry_path=tmp_path / "dummy.stl").get_target_mesh()
+
+
+@pytest.mark.parametrize("value", ["info", "WARNING", logging.INFO])
+def test_log_level_accepts_valid_values(value):
+    config = _base_config()
+    TPMSGenerator(config, log_level=value)
+
+
+def test_log_level_rejects_invalid_value():
+    config = _base_config()
+    with pytest.raises(ValueError, match="Invalid log level"):
+        TPMSGenerator(config, log_level="not_a_level")
