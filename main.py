@@ -6,20 +6,18 @@ from mmgen import grading
 def test_basic_gyroid():
     """Generates a simple Gyroid block with constant thickness."""
     config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=30j),
-        domain=DomainConfig(length=30, width=30, height=30),
-        output_name="basic_gyroid"
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=30),
+        domain=DomainConfig(length=30, width=30, height=30)
     )
-    # Pass constant thickness
-    gen = TPMSGenerator(config, thickness=0.5)
+    # Pass constant thickness and output_name
+    gen = TPMSGenerator(config, thickness=0.5, output_name="basic_gyroid")
     gen.run()
 
 def test_graded_schwarz_p():
     """Generates a graded Schwarz P block."""
     config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=30j),
+        tpms=TPMSParams(type="schwarz_p", cell_size=10.0, resolution=20),
         domain=DomainConfig(length=30, width=20, height=20),
-        output_name="graded_schwarz_p",
         lids={'x_min': 2.0, 'x_max': 2.0} 
     )
     
@@ -27,7 +25,7 @@ def test_graded_schwarz_p():
     # t moves from 0.2 to 0.8 along x-axis from 0 to 50
     grading_func = grading.linear_x(t0=0.2, tl=0.8, x0=0.0, xl=50.0)
     
-    gen = TPMSGenerator(config, thickness=grading_func)
+    gen = TPMSGenerator(config, thickness=grading_func, output_name="graded_schwarz_p")
     gen.run()
 
 def test_lids_with_benchy():
@@ -36,14 +34,13 @@ def test_lids_with_benchy():
     benchy_path = "3DBenchy.stl"
     
     config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30j),
-        domain=DomainConfig(length=60, width=40, height=10),
-        target_geometry=benchy_path if os.path.exists(benchy_path) else None,
-        output_name="lidinoid_lids_benchy",
+        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
+        domain=DomainConfig(length=60, width=40, height=48),
         lids={'z_min': 2.0, 'z_max': 2.0} # 2mm solid bottom and top
     )
-    # default constant thickness
-    gen = TPMSGenerator(config, thickness=0.5)
+    # default constant thickness with target_geometry and output_name
+    target_geom = benchy_path if os.path.exists(benchy_path) else None
+    gen = TPMSGenerator(config, thickness=0.5, target_geometry=target_geom, output_name="lidinoid_lids_benchy")
     gen.run()
 
 
@@ -53,13 +50,12 @@ def test_lidinoid_with_benchy():
     benchy_path = "3DBenchy.stl"
     
     config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30j),
-        domain=DomainConfig(length=60, width=40, height=10),
-        target_geometry=benchy_path if os.path.exists(benchy_path) else None,
-        output_name="lidinoid_mesh"
+        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
+        domain=DomainConfig(length=60, width=40, height=48)
     )
-    # default constant thickness
-    gen = TPMSGenerator(config, thickness=0.5)
+    # default constant thickness with target_geometry and output_name
+    target_geom = benchy_path if os.path.exists(benchy_path) else None
+    gen = TPMSGenerator(config, thickness=0.5, target_geometry=target_geom, output_name="lidinoid_mesh")
     gen.run()
 
 if __name__ == "__main__":

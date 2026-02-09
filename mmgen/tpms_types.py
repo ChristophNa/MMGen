@@ -1,15 +1,15 @@
 import numpy as np
-from enum import Enum, auto
+from enum import Enum
 from typing import Callable
 from numpy import sin, cos, pi
 
-class TPMSType(Enum):
-    GYROID = auto()
-    SCHWARZ_P = auto()
-    DIAMOND = auto()
-    LIDINOID = auto()
-    SPLIT_P = auto()
-    NEOVIUS = auto()
+class TPMSType(str, Enum):
+    GYROID = "GYROID"
+    SCHWARZ_P = "SCHWARZ_P"
+    DIAMOND = "DIAMOND"
+    LIDINOID = "LIDINOID"
+    SPLIT_P = "SPLIT_P"
+    NEOVIUS = "NEOVIUS"
 
 def gyroid_eq(x, y, z, a):
     cox = cos(2.0 * pi * x / a)

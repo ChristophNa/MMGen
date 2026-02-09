@@ -5,10 +5,10 @@ This document describes the generalized implementation of Triply Periodic Minima
 ## Architecture
 
 The implementation is split into a modular core:
-- `core/tpms_types.py`: Definitions of TPMS equations and registry.
-- `core/config.py`: Dataclasses for handling input parameters.
-- `core/generator.py`: Main logic for grid generation, field evaluation, and meshing.
-- `core/utils.py`: Helper functions (PyCork wrappers).
+- `mmgen/tpms_types.py`: Definitions of TPMS equations and registry.
+- `mmgen/config.py`: Pydantic models for handling input parameters.
+- `mmgen/generator.py`: Main logic for grid generation, field evaluation, and meshing.
+- `mmgen/utils.py`: Helper functions (Manifold3D boolean wrappers).
 
 ## Supported TPMS Types
 
@@ -32,22 +32,17 @@ The generator supports the following "Double" TPMS variants:
 - `cell_size`: Size of the unit cell in mm.
 - `resolution`: Voxel resolution per unit cell (e.g., `30j` for 30 voxels).
 
-### GradingParams
-Linear grading allows the thickness (level-set parameter $t$) to change along the X-axis.
-- `t0`: Initial 't' value at $x = x0$.
-- `tl`: Final 't' value at $x = xl$.
-- `x0`: Start position for grading.
-- `xl`: End position for grading (defaults to domain length).
-
-The field is evaluated as: $V = f(x,y,z) - t(x)^2$, where $t(x)$ is linearly interpolated between $t0$ and $tl$.
+### GradingSpec
+Grading is specified via a declarative `GradingSpec` model (constant/linear/radial).
+The field is evaluated as: $V = f(x,y,z) - t(x,y,z)^2$.
 
 ### DomainConfig
 - `length, width, height`: Dimensions of the bounding box/domain in mm.
 
 ### GeneratorConfig
 - Combines the above parameters.
-- `target_geometry`: If provided (path to STL), the TPMS will be intersected with this geometry using PyCork. If not provided, it intersects with a block defined by the domain.
+- `target_geometry`: If provided (path to STL), the TPMS will be intersected with this geometry using Manifold3D. If not provided, it intersects with a block defined by the domain.
 
-## Intersection with PyCork
+## Intersection with Manifold3D
 
-The generator uses `pycork.intersection` to ensure clean boundaries at the domain edges. This is superior to standard trimesh booleans as it handles non-manifold cases and self-intersections more robustly, which are common in TPMS meshes produced by marching cubes.
+The generator uses Manifold3D for boolean operations to ensure clean boundaries at the domain edges and robust handling of non-manifold cases common in marching-cubes output.

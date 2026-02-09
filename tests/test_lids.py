@@ -40,13 +40,12 @@ def main():
     # Test 1: Z_MIN Lid
     print("--- Test 1: Z_MIN Lid (Bottom) ---")
     config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20j),
+        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
         domain=DomainConfig(length=20, width=20, height=20),
-        output_name="test_lid_z_min",
         lids={'z_min': 2.0}
     )
     
-    gen = TPMSGenerator(config, thickness=0.5)
+    gen = TPMSGenerator(config, thickness=0.5, output_path="test_lid_z_min.stl")
     mesh = gen.run()
     
     # Check Z=-10 (since height=20, centered)
@@ -62,13 +61,12 @@ def main():
     # Test 2: Double Lids (X_MIN, X_MAX)
     print("\n--- Test 2: X_MIN and X_MAX Lids ---")
     config2 = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=20j),
+        tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=20),
         domain=DomainConfig(length=20, width=20, height=20),
-        output_name="test_lid_x_min_max",
         lids={'x_min': 2.0, 'x_max': 2.0}
     )
     
-    gen2 = TPMSGenerator(config2, thickness=0.5)
+    gen2 = TPMSGenerator(config2, thickness=0.5, output_path="test_lid_x_min_max.stl")
     mesh2 = gen2.run()
     
     # Check X=-10 and X=10

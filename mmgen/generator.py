@@ -8,10 +8,13 @@ from .utils import mesh_intersection, mesh_union
 from .grading import constant, GradingFunc
 
 class TPMSGenerator:
-    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingFunc]):
+    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingFunc], 
+                 target_geometry: str = None, output_name: str = "result"):
         self.config = config
         self.domain = config.domain
         self.tpms_params = config.tpms
+        self.target_geometry = target_geometry
+        self.output_name = output_name
         
         if isinstance(thickness, (float, int)):
             self.grading_func = constant(float(thickness))
@@ -30,7 +33,7 @@ class TPMSGenerator:
         ny = (self.domain.width + 2 * margin) / self.tpms_params.cell_size
         nz = (self.domain.height + 2 * margin) / self.tpms_params.cell_size
         
-        res = self.tpms_params.resolution
+        res = complex(0, self.tpms_params.resolution)
         # Sampling slightly outside the requested domain [0, L]
         self.x, self.y, self.z = np.mgrid[
             -margin : self.domain.length + margin : res * nx,
@@ -92,9 +95,9 @@ class TPMSGenerator:
 
     def get_target_mesh(self) -> trimesh.Trimesh:
         """Loads target geometry or creates a default box."""
-        if self.config.target_geometry:
-            print(f"Loading target geometry from: {self.config.target_geometry}")
-            mesh = trimesh.load_mesh(self.config.target_geometry)
+        if self.target_geometry:
+            print(f"Loading target geometry from: {self.target_geometry}")
+            mesh = trimesh.load_mesh(self.target_geometry)
             print(f"Loaded mesh type: {type(mesh)}")
             
             # Handle Scene object if returned
@@ -202,7 +205,7 @@ class TPMSGenerator:
         print("Performing Mesh intersection (TPMS + Lids ^ Target)...")
         final_mesh = mesh_intersection(tpms_mesh, target_mesh)
         
-        output_path = f"{self.config.output_name}.stl"
+        output_path = f"{self.output_name}.stl"
         final_mesh.export(output_path)
         print(f"Mesh saved to {output_path}")
         
