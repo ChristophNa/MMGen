@@ -1,14 +1,14 @@
 import numpy as np
 import trimesh
 from skimage import measure
-from typing import Union, Callable
+from typing import Union
 from .config import GeneratorConfig
 from .tpms_types import TPMS_REGISTRY
 from .utils import mesh_intersection, mesh_union
-from .grading import constant, GradingFunc
+from .grading import GradingSpec, grading_from_spec
 
 class TPMSGenerator:
-    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingFunc], 
+    def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingSpec], 
                  target_geometry: str = None, output_name: str = "result"):
         self.config = config
         self.domain = config.domain
@@ -17,11 +17,13 @@ class TPMSGenerator:
         self.output_name = output_name
         
         if isinstance(thickness, (float, int)):
-            self.grading_func = constant(float(thickness))
-        elif callable(thickness):
-            self.grading_func = thickness
+            self.grading_spec = GradingSpec(kind="constant", params={"t": float(thickness)})
+        elif isinstance(thickness, GradingSpec):
+            self.grading_spec = thickness
         else:
-            raise ValueError("thickness must be a float or a callable function")
+            raise ValueError("thickness must be a float or a GradingSpec")
+
+        self.grading_func = grading_from_spec(self.grading_spec)
             
     def generate_grid(self):
         """Generates the 3D grid based on domain and resolution."""
@@ -49,8 +51,9 @@ class TPMSGenerator:
         field = eq_func(self.x, self.y, self.z, self.tpms_params.cell_size)
         
         # Apply Grading / Thickness
-        # Get the 't' value field from the injected function
-        t_field = self.grading_func(self.x, self.y, self.z)
+        # Evaluate grading over flattened XYZ points, then reshape to grid.
+        points = np.column_stack((self.x.ravel(), self.y.ravel(), self.z.ravel()))
+        t_field = self.grading_func(points).reshape(self.x.shape)
         
         # We'll stick to the "Double" variant logic where we subtract t**2.
         final_field = field - t_field**2

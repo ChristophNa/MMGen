@@ -1,71 +1,81 @@
-from mmgen.config import GeneratorConfig, DomainConfig, TPMSParams
-from mmgen.tpms_types import TPMSType
+import os
+
+from mmgen.config import DomainConfig, GeneratorConfig, TPMSParams
 from mmgen.generator import TPMSGenerator
-from mmgen import grading
+from mmgen.grading import GradingSpec
+from mmgen.tpms_types import TPMSType
+
 
 def test_basic_gyroid():
     """Generates a simple Gyroid block with constant thickness."""
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=30),
-        domain=DomainConfig(length=30, width=30, height=30)
+        domain=DomainConfig(length=30, width=30, height=30),
     )
-    # Pass constant thickness and output_name
     gen = TPMSGenerator(config, thickness=0.5, output_name="basic_gyroid")
     gen.run()
+
 
 def test_graded_schwarz_p():
     """Generates a graded Schwarz P block."""
     config = GeneratorConfig(
         tpms=TPMSParams(type="schwarz_p", cell_size=10.0, resolution=20),
         domain=DomainConfig(length=30, width=20, height=20),
-        lids={'x_min': 2.0, 'x_max': 2.0} 
+        lids={"x_min": 2.0, "x_max": 2.0},
     )
-    
-    # Define linear grading
-    # t moves from 0.2 to 0.8 along x-axis from 0 to 50
-    grading_func = grading.linear_x(t0=0.2, tl=0.8, x0=0.0, xl=50.0)
-    
-    gen = TPMSGenerator(config, thickness=grading_func, output_name="graded_schwarz_p")
+
+    grading_spec = GradingSpec(
+        kind="affine",
+        params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
+    )
+
+    gen = TPMSGenerator(config, thickness=grading_spec, output_name="graded_schwarz_p")
     gen.run()
+
 
 def test_lids_with_benchy():
     """Generates a Lidinoid pattern with lids at the bottom and top, intersected with Benchy."""
-    # This demonstrates the 'solid lid' feature on a complex geometry
     benchy_path = "3DBenchy.stl"
-    
+
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
         domain=DomainConfig(length=60, width=40, height=48),
-        lids={'z_min': 2.0, 'z_max': 2.0} # 2mm solid bottom and top
+        lids={"z_min": 2.0, "z_max": 2.0},
     )
-    # default constant thickness with target_geometry and output_name
     target_geom = benchy_path if os.path.exists(benchy_path) else None
-    gen = TPMSGenerator(config, thickness=0.5, target_geometry=target_geom, output_name="lidinoid_lids_benchy")
+    gen = TPMSGenerator(
+        config,
+        thickness=0.5,
+        target_geometry=target_geom,
+        output_name="lidinoid_lids_benchy",
+    )
     gen.run()
 
 
 def test_lidinoid_with_benchy():
     """Generates a Lidinoid pattern intersected with a Benchy STL if available."""
-    # Assuming 3DBenchy.stl is in the same directory as original scripts
     benchy_path = "3DBenchy.stl"
-    
+
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
-        domain=DomainConfig(length=60, width=40, height=48)
+        domain=DomainConfig(length=60, width=40, height=48),
     )
-    # default constant thickness with target_geometry and output_name
     target_geom = benchy_path if os.path.exists(benchy_path) else None
-    gen = TPMSGenerator(config, thickness=0.5, target_geometry=target_geom, output_name="lidinoid_mesh")
+    gen = TPMSGenerator(
+        config,
+        thickness=0.5,
+        target_geometry=target_geom,
+        output_name="lidinoid_mesh",
+    )
     gen.run()
 
+
 if __name__ == "__main__":
-    import os
-    # Ensure we are in the source directory
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    
+
     print("--- Running Basic Gyroid Test ---")
     test_basic_gyroid()
-    
+
     print("\n--- Running Graded Schwarz P Test ---")
     test_graded_schwarz_p()
 
@@ -74,8 +84,5 @@ if __name__ == "__main__":
 
     print("\n--- Running Lidinoid Test ---")
     test_lidinoid_with_benchy()
-    
 
-    
     print("\nVerification complete. Check generated STL files.")
-
