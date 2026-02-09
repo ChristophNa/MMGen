@@ -1,42 +1,15 @@
-# from dataclasses import dataclass, field
-# from typing import Optional, Union
-# import numpy as np
-# from .tpms_types import TPMSType
-
-# @dataclass
-# class TPMSParams:
-#     """Basic parameters for TPMS generation."""
-#     type: TPMSType = TPMSType.GYROID
-#     cell_size: float = 10.0  # [mm]
-#     resolution: int = 30  # Number of voxels per unit cell
-
-# @dataclass
-# class DomainConfig:
-#     """Physical dimensions of the domain."""
-#     length: float = 50.0  # [mm] (x)
-#     width: float = 10.0   # [mm] (y)
-#     height: float = 10.0  # [mm] (z)
-
-# @dataclass
-# class GeneratorConfig:
-#     """Combined configuration for the TPMS generator."""
-#     tpms: TPMSParams = field(default_factory=TPMSParams)
-#     domain: DomainConfig = field(default_factory=DomainConfig)
-#     lids: dict[str, float] = field(default_factory=dict)  # {'z_min': 1.0, ...}
-
-# from __future__ import annotations
-
 from typing import Any
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 
+from .grading import GradingSpec
 from .tpms_types import TPMSType
 
-class TPMSParams(BaseModel):
+
+class LatticeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     type: TPMSType = TPMSType.GYROID
     cell_size: float = Field(default=10.0, gt=0.0)      # [mm]
-    resolution: int = Field(default=20, ge=2)           # voxels per unit cell
 
     @field_validator("type", mode="before")
     @classmethod
@@ -49,6 +22,13 @@ class TPMSParams(BaseModel):
             except KeyError as e:
                 raise ValueError(f"Unknown TPMSType '{v}'. Allowed: {[m.name for m in TPMSType]}") from e
         return v
+
+
+class SamplingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    voxels_per_cell: int = Field(default=20, ge=2)
+    margin_cells: float = Field(default=0.5, ge=0.0)
 
 
 class DomainConfig(BaseModel):
@@ -73,9 +53,26 @@ class LidSpec(BaseModel):
         return {side: thickness for side, thickness in self.model_dump().items() if thickness > 0.0}
 
 
-class GeneratorConfig(BaseModel):
+class BooleanConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
-    tpms: TPMSParams = Field(default_factory=TPMSParams)
+    lid_overlap_margin: float = Field(default=1.0, ge=0.0)
+    center_target_mesh: bool = True
+    clip_target_to_domain: bool = True
+
+
+class GeometryConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
     domain: DomainConfig = Field(default_factory=DomainConfig)
     lids: LidSpec = Field(default_factory=LidSpec)
+    thickness: float | GradingSpec = 0.5
+
+
+class GenerationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    lattice: LatticeConfig = Field(default_factory=LatticeConfig)
+    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
+    booleans: BooleanConfig = Field(default_factory=BooleanConfig)
+    geometry: GeometryConfig = Field(default_factory=GeometryConfig)

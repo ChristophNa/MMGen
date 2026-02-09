@@ -1,13 +1,12 @@
 from dataclasses import dataclass, field
 import logging
 from pathlib import Path
-from typing import Union
 
 import numpy as np
 import trimesh
 from skimage import measure
 
-from .config import GeneratorConfig
+from .config import GenerationConfig
 from .grading import GradingSpec, grading_from_spec
 from .tpms_types import TPMS_REGISTRY
 from .utils import mesh_intersection, mesh_union
@@ -23,16 +22,17 @@ class MeshQualityMetadata:
 class TPMSGenerator:
     def __init__(
         self,
-        config: GeneratorConfig,
-        thickness: Union[float, GradingSpec],
+        config: GenerationConfig,
         target_geometry_path: Path | None = None,
         target_mesh: trimesh.Trimesh | None = None,
         logger: logging.Logger | None = None,
         log_level: int | str | None = None,
     ):
         self.config = config
-        self.domain = config.domain
-        self.tpms_params = config.tpms
+        self.domain = config.geometry.domain
+        self.lattice = config.lattice
+        self.sampling = config.sampling
+        self.boolean_config = config.booleans
         self.target_geometry_path = Path(target_geometry_path) if target_geometry_path is not None else None
         self.target_mesh = target_mesh
         self.logger = logger or logging.getLogger(__name__)
@@ -41,13 +41,12 @@ class TPMSGenerator:
 
         if self.target_geometry_path is not None and self.target_mesh is not None:
             raise ValueError("Provide either target_geometry_path or target_mesh, not both.")
-        
+
+        thickness = config.geometry.thickness
         if isinstance(thickness, (float, int)):
             self.grading_spec = GradingSpec(kind="constant", params={"t": float(thickness)})
-        elif isinstance(thickness, GradingSpec):
-            self.grading_spec = thickness
         else:
-            raise ValueError("thickness must be a float or a GradingSpec")
+            self.grading_spec = thickness
 
         self.grading_func = grading_from_spec(self.grading_spec)
 
@@ -64,14 +63,13 @@ class TPMSGenerator:
     def generate_grid(self):
         """Generates the 3D grid based on domain and resolution."""
         # Expand domain slightly to ensure crisp boundaries during clipping/intersection
-        # Adding half a cell size margin on each side
-        margin = self.tpms_params.cell_size * 0.5
+        margin = self.lattice.cell_size * self.sampling.margin_cells
         
-        nx = (self.domain.length + 2 * margin) / self.tpms_params.cell_size
-        ny = (self.domain.width + 2 * margin) / self.tpms_params.cell_size
-        nz = (self.domain.height + 2 * margin) / self.tpms_params.cell_size
+        nx = (self.domain.length + 2 * margin) / self.lattice.cell_size
+        ny = (self.domain.width + 2 * margin) / self.lattice.cell_size
+        nz = (self.domain.height + 2 * margin) / self.lattice.cell_size
         
-        res = complex(0, self.tpms_params.resolution)
+        res = complex(0, self.sampling.voxels_per_cell)
         # Sampling slightly outside the requested domain [0, L]
         self.x, self.y, self.z = np.mgrid[
             -margin : self.domain.length + margin : res * nx,
@@ -81,10 +79,10 @@ class TPMSGenerator:
         
     def evaluate_field(self) -> np.ndarray:
         """Evaluates the scalar field based on the selected TPMS and grading."""
-        eq_func = TPMS_REGISTRY[self.tpms_params.type]
+        eq_func = TPMS_REGISTRY[self.lattice.type]
         
         # Base TPMS value (without level-set 't')
-        field = eq_func(self.x, self.y, self.z, self.tpms_params.cell_size)
+        field = eq_func(self.x, self.y, self.z, self.lattice.cell_size)
         
         # Apply Grading / Thickness
         # Evaluate grading over flattened XYZ points, then reshape to grid.
@@ -168,7 +166,8 @@ class TPMSGenerator:
         if mesh.bounds is None:
             self.logger.warning("Target mesh bounds are None.")
 
-        mesh.vertices -= mesh.bounding_box.centroid
+        if self.boolean_config.center_target_mesh:
+            mesh.vertices -= mesh.bounding_box.centroid
         return mesh
 
     def _generate_lid(self, side: str, thickness: float) -> trimesh.Trimesh | None:
@@ -176,7 +175,7 @@ class TPMSGenerator:
         l, w, h = self.domain.length, self.domain.width, self.domain.height
         
         # Margin to ensure overlap
-        margin = 1.0 
+        margin = self.boolean_config.lid_overlap_margin 
         
         # Lids are generated relative to the Origin (0,0,0) which is the center of the domain.
         # Domain extends [-L/2, L/2], [-W/2, W/2], [-H/2, H/2]
@@ -270,14 +269,14 @@ class TPMSGenerator:
         check_watertight: bool = True,
     ) -> tuple[trimesh.Trimesh, MeshQualityMetadata]:
         """Executes the full mesh generation and intersection process."""
-        self.logger.info("Generating TPMS: %s", self.tpms_params.type.name)
+        self.logger.info("Generating TPMS: %s", self.lattice.type.name)
         tpms_mesh = self.generate_raw_mesh()
 
         # Center TPMS Mesh First (0..L -> -L/2..L/2)
         tpms_mesh.vertices -= [self.domain.length / 2, self.domain.width / 2, self.domain.height / 2]
 
         # Apply Lids (Generated in Centered Coordinates)
-        enabled_lids = self.config.lids.enabled()
+        enabled_lids = self.config.geometry.lids.enabled()
         if enabled_lids:
             self.logger.info("Generating and unioning %d lids.", len(enabled_lids))
             for side, thickness in enabled_lids.items():
@@ -291,12 +290,13 @@ class TPMSGenerator:
         target_mesh = self.get_target_mesh()
 
         # Clip target mesh to domain dimensions to avoid TPMS margins affecting the result
-        self.logger.info("Clipping target geometry to domain boundaries.")
-        domain_box = trimesh.primitives.Box(
-            extents=(self.domain.length, self.domain.width, self.domain.height)
-        )
-        # domain_box is centered at 0,0,0, matching our coordinate system
-        target_mesh = mesh_intersection(target_mesh, domain_box)
+        if self.boolean_config.clip_target_to_domain:
+            self.logger.info("Clipping target geometry to domain boundaries.")
+            domain_box = trimesh.primitives.Box(
+                extents=(self.domain.length, self.domain.width, self.domain.height)
+            )
+            # domain_box is centered at 0,0,0, matching our coordinate system
+            target_mesh = mesh_intersection(target_mesh, domain_box)
 
         self.logger.info("Performing mesh intersection (TPMS + lids with target).")
         final_mesh = mesh_intersection(tpms_mesh, target_mesh)

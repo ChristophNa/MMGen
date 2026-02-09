@@ -3,7 +3,13 @@ import logging
 import os
 from pathlib import Path
 
-from mmgen.config import DomainConfig, GeneratorConfig, TPMSParams
+from mmgen.config import (
+    DomainConfig,
+    GenerationConfig,
+    GeometryConfig,
+    LatticeConfig,
+    SamplingConfig,
+)
 from mmgen.generator import TPMSGenerator
 from mmgen.grading import GradingSpec
 from mmgen.tpms_types import TPMSType
@@ -44,12 +50,16 @@ def test_basic_gyroid():
 
     Example of passing an explicit logger to TPMSGenerator.
     """
-    config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=30),
-        domain=DomainConfig(length=30, width=30, height=30),
+    config = GenerationConfig(
+        lattice=LatticeConfig(type=TPMSType.GYROID, cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=30),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=30, width=30, height=30),
+            thickness=0.5,
+        ),
     )
     task_logger = logging.getLogger("mmgen.examples.basic_gyroid")
-    gen = TPMSGenerator(config, thickness=0.5, logger=task_logger)
+    gen = TPMSGenerator(config, logger=task_logger)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
     gen.export(mesh, "basic_gyroid.stl")
@@ -57,10 +67,13 @@ def test_basic_gyroid():
 
 def test_graded_schwarz_p():
     """Generates a graded Schwarz P block."""
-    config = GeneratorConfig(
-        tpms=TPMSParams(type="schwarz_p", cell_size=10.0, resolution=20),
-        domain=DomainConfig(length=30, width=20, height=20),
-        lids={"x_min": 2.0, "x_max": 2.0},
+    config = GenerationConfig(
+        lattice=LatticeConfig(type="schwarz_p", cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=20),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=30, width=20, height=20),
+            lids={"x_min": 2.0, "x_max": 2.0},
+        ),
     )
 
     grading_spec = GradingSpec(
@@ -68,7 +81,8 @@ def test_graded_schwarz_p():
         params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
     )
 
-    gen = TPMSGenerator(config, thickness=grading_spec)
+    config.geometry.thickness = grading_spec
+    gen = TPMSGenerator(config)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
     gen.export(mesh, "graded_schwarz_p.stl")
@@ -78,15 +92,18 @@ def test_lids_with_benchy():
     """Generates a Lidinoid pattern with lids at the bottom and top, intersected with Benchy."""
     benchy_path = "3DBenchy.stl"
 
-    config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
-        domain=DomainConfig(length=60, width=40, height=48),
-        lids={"z_min": 2.0, "z_max": 2.0},
+    config = GenerationConfig(
+        lattice=LatticeConfig(type=TPMSType.LIDINOID, cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=30),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=60, width=40, height=48),
+            lids={"z_min": 2.0, "z_max": 2.0},
+            thickness=0.5,
+        ),
     )
     target_geom = benchy_path if os.path.exists(benchy_path) else None
     gen = TPMSGenerator(
         config,
-        thickness=0.5,
         target_geometry_path=Path(target_geom) if target_geom else None,
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
@@ -98,14 +115,17 @@ def test_lidinoid_with_benchy():
     """Generates a Lidinoid pattern intersected with a Benchy STL if available."""
     benchy_path = "3DBenchy.stl"
 
-    config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.LIDINOID, cell_size=10.0, resolution=30),
-        domain=DomainConfig(length=60, width=40, height=48),
+    config = GenerationConfig(
+        lattice=LatticeConfig(type=TPMSType.LIDINOID, cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=30),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=60, width=40, height=48),
+            thickness=0.5,
+        ),
     )
     target_geom = benchy_path if os.path.exists(benchy_path) else None
     gen = TPMSGenerator(
         config,
-        thickness=0.5,
         target_geometry_path=Path(target_geom) if target_geom else None,
     )
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)

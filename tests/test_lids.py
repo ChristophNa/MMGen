@@ -8,7 +8,7 @@ import trimesh
 # Add parent directory to path to import mmgen
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mmgen.config import DomainConfig, GeneratorConfig, TPMSParams
+from mmgen.config import DomainConfig, GenerationConfig, GeometryConfig, LatticeConfig, SamplingConfig
 from mmgen.generator import TPMSGenerator
 from mmgen.tpms_types import TPMSType
 
@@ -56,17 +56,21 @@ def main():
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     logger.info("--- Test 1: Z_MIN Lid (Bottom) ---")
-    config = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
-        domain=DomainConfig(length=20, width=20, height=20),
-        lids={"z_min": 2.0},
+    config = GenerationConfig(
+        lattice=LatticeConfig(type=TPMSType.GYROID, cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=20),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=20, width=20, height=20),
+            lids={"z_min": 2.0},
+            thickness=0.5,
+        ),
     )
 
-    gen = TPMSGenerator(config, thickness=0.5)
+    gen = TPMSGenerator(config)
     mesh, metadata = gen.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata)
 
-    has_lid = check_lid_coverage(mesh, config.domain, 2, -10.0)
+    has_lid = check_lid_coverage(mesh, config.geometry.domain, 2, -10.0)
 
     if has_lid:
         logger.info("PASS: Lid detected at Z_MIN.")
@@ -75,18 +79,22 @@ def main():
 
     # Test 2: Double Lids (X_MIN, X_MAX)
     logger.info("--- Test 2: X_MIN and X_MAX Lids ---")
-    config2 = GeneratorConfig(
-        tpms=TPMSParams(type=TPMSType.SCHWARZ_P, cell_size=10.0, resolution=20),
-        domain=DomainConfig(length=20, width=20, height=20),
-        lids={"x_min": 2.0, "x_max": 2.0},
+    config2 = GenerationConfig(
+        lattice=LatticeConfig(type=TPMSType.SCHWARZ_P, cell_size=10.0),
+        sampling=SamplingConfig(voxels_per_cell=20),
+        geometry=GeometryConfig(
+            domain=DomainConfig(length=20, width=20, height=20),
+            lids={"x_min": 2.0, "x_max": 2.0},
+            thickness=0.5,
+        ),
     )
 
-    gen2 = TPMSGenerator(config2, thickness=0.5)
+    gen2 = TPMSGenerator(config2)
     mesh2, metadata2 = gen2.generate_mesh(allow_nonwatertight=True)
     logger.info("Metadata: %s", metadata2)
 
-    has_lid_min = check_lid_coverage(mesh2, config2.domain, 0, -10.0)
-    has_lid_max = check_lid_coverage(mesh2, config2.domain, 0, 10.0)
+    has_lid_min = check_lid_coverage(mesh2, config2.geometry.domain, 0, -10.0)
+    has_lid_max = check_lid_coverage(mesh2, config2.geometry.domain, 0, 10.0)
 
     if has_lid_min and has_lid_max:
         logger.info("PASS: Lids detected at X_MIN and X_MAX.")

@@ -27,23 +27,36 @@ The generator supports the following "Double" TPMS variants:
 
 ## Parameters
 
-### TPMSParams
+### GenerationConfig
+Top-level deterministic input object for generation.
+
+### LatticeConfig
 - `type`: One of `GYROID, SCHWARZ_P, DIAMOND, LIDINOID, SPLIT_P, NEOVIUS`.
 - `cell_size`: Size of the unit cell in mm.
-- `resolution`: Voxel resolution per unit cell (e.g., `30j` for 30 voxels).
+
+### SamplingConfig
+- `voxels_per_cell`: Voxel resolution per unit cell.
+- `margin_cells`: Grid sampling margin in units of cell size. Default: `0.5`.
+
+### BooleanConfig
+- `lid_overlap_margin`: Overlap margin used when constructing lid solids. Default: `1.0`.
+- `center_target_mesh`: If `true`, target mesh is recentered to origin before booleans.
+- `clip_target_to_domain`: If `true`, target geometry is clipped to domain box before final intersection.
+
+### GeometryConfig
+- `domain`: `DomainConfig` (`length`, `width`, `height` in mm).
+- `lids`: `LidSpec` per-face lid thicknesses (`x_min`, `x_max`, `y_min`, `y_max`, `z_min`, `z_max`).
+- `thickness`: Constant thickness (`float`) or declarative `GradingSpec`.
 
 ### GradingSpec
-Grading is specified via a declarative `GradingSpec` model (constant/linear/radial).
+Grading is specified via a declarative `GradingSpec` model (`constant`, `affine`, `radial`).
 The field is evaluated as: $V = f(x,y,z) - t(x,y,z)^2$.
 
-### DomainConfig
-- `length, width, height`: Dimensions of the bounding box/domain in mm.
-
-### GeneratorConfig
-- Combines the above parameters.
-- `target_geometry_path`: Optional path to target geometry.
-- `target_mesh`: Optional preloaded `trimesh.Trimesh`.
-- Provide at most one of `target_geometry_path` or `target_mesh`; if neither is provided, intersection defaults to a domain-sized box.
+### Fixed Internal Extraction Defaults
+These remain intentionally internal and are not user-configurable:
+- Iso level is fixed at `0`.
+- Boundary closure behavior is always applied with fill value `1.0`.
+- `skimage.measure.marching_cubes` uses the current built-in defaults.
 
 ## Intersection with Manifold3D
 
