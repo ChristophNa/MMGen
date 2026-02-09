@@ -49,8 +49,8 @@ def main():
         lids={"z_min": 2.0},
     )
 
-    gen = TPMSGenerator(config, thickness=0.5, output_name="test_lid_z_min")
-    mesh = gen.run()
+    gen = TPMSGenerator(config, thickness=0.5)
+    mesh = gen.generate_mesh()
 
     has_lid = check_lid_coverage(mesh, config.domain, 2, -10.0)
 
@@ -67,8 +67,8 @@ def main():
         lids={"x_min": 2.0, "x_max": 2.0},
     )
 
-    gen2 = TPMSGenerator(config2, thickness=0.5, output_name="test_lid_x_min_max")
-    mesh2 = gen2.run()
+    gen2 = TPMSGenerator(config2, thickness=0.5)
+    mesh2 = gen2.generate_mesh()
 
     has_lid_min = check_lid_coverage(mesh2, config2.domain, 0, -10.0)
     has_lid_max = check_lid_coverage(mesh2, config2.domain, 0, 10.0)

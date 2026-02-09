@@ -12,8 +12,9 @@ def test_basic_gyroid():
         tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=30),
         domain=DomainConfig(length=30, width=30, height=30),
     )
-    gen = TPMSGenerator(config, thickness=0.5, output_name="basic_gyroid")
-    gen.run()
+    gen = TPMSGenerator(config, thickness=0.5)
+    mesh = gen.generate_mesh()
+    gen.export(mesh, "basic_gyroid.stl")
 
 
 def test_graded_schwarz_p():
@@ -29,8 +30,9 @@ def test_graded_schwarz_p():
         params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
     )
 
-    gen = TPMSGenerator(config, thickness=grading_spec, output_name="graded_schwarz_p")
-    gen.run()
+    gen = TPMSGenerator(config, thickness=grading_spec)
+    mesh = gen.generate_mesh()
+    gen.export(mesh, "graded_schwarz_p.stl")
 
 
 def test_lids_with_benchy():
@@ -47,9 +49,9 @@ def test_lids_with_benchy():
         config,
         thickness=0.5,
         target_geometry=target_geom,
-        output_name="lidinoid_lids_benchy",
     )
-    gen.run()
+    mesh = gen.generate_mesh()
+    gen.export(mesh, "lidinoid_lids_benchy.stl")
 
 
 def test_lidinoid_with_benchy():
@@ -65,9 +67,9 @@ def test_lidinoid_with_benchy():
         config,
         thickness=0.5,
         target_geometry=target_geom,
-        output_name="lidinoid_mesh",
     )
-    gen.run()
+    mesh = gen.generate_mesh()
+    gen.export(mesh, "lidinoid_mesh.stl")
 
 
 if __name__ == "__main__":

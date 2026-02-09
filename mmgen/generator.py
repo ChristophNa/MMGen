@@ -2,6 +2,7 @@ import numpy as np
 import trimesh
 from skimage import measure
 from typing import Union
+from pathlib import Path
 from .config import GeneratorConfig
 from .tpms_types import TPMS_REGISTRY
 from .utils import mesh_intersection, mesh_union
@@ -9,12 +10,11 @@ from .grading import GradingSpec, grading_from_spec
 
 class TPMSGenerator:
     def __init__(self, config: GeneratorConfig, thickness: Union[float, GradingSpec], 
-                 target_geometry: str = None, output_name: str = "result"):
+                 target_geometry: str = None):
         self.config = config
         self.domain = config.domain
         self.tpms_params = config.tpms
         self.target_geometry = target_geometry
-        self.output_name = output_name
         
         if isinstance(thickness, (float, int)):
             self.grading_spec = GradingSpec(kind="constant", params={"t": float(thickness)})
@@ -174,8 +174,8 @@ class TPMSGenerator:
             
         return box
 
-    def run(self) -> trimesh.Trimesh:
-        """Executes the full generation and intersection process."""
+    def generate_mesh(self) -> trimesh.Trimesh:
+        """Executes the full mesh generation and intersection process."""
         print(f"Generating TPMS: {self.tpms_params.type.name}...")
         tpms_mesh = self.generate_raw_mesh()
         
@@ -206,9 +206,12 @@ class TPMSGenerator:
         
         print("Performing Mesh intersection (TPMS + Lids ^ Target)...")
         final_mesh = mesh_intersection(tpms_mesh, target_mesh)
-        
-        output_path = f"{self.output_name}.stl"
-        final_mesh.export(output_path)
-        print(f"Mesh saved to {output_path}")
-        
+
         return final_mesh
+
+    def export(self, mesh: trimesh.Trimesh, output_path: Path) -> Path:
+        """Exports a mesh to disk and returns the written path."""
+        path = Path(output_path)
+        mesh.export(path)
+        print(f"Mesh saved to {path}")
+        return path

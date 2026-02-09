@@ -10,7 +10,6 @@ from mmgen.tpms_types import TPMSType
 
 def test_basic_gyroid(tmp_path):
     """Generates a simple Gyroid block."""
-    output_name = tmp_path / "basic_gyroid"
     output_path = tmp_path / "basic_gyroid.stl"
 
     config = GeneratorConfig(
@@ -18,17 +17,18 @@ def test_basic_gyroid(tmp_path):
         domain=DomainConfig(length=30, width=30, height=30),
     )
 
-    gen = TPMSGenerator(config, thickness=0.5, output_name=str(output_name))
-    mesh = gen.run()
+    gen = TPMSGenerator(config, thickness=0.5)
+    mesh = gen.generate_mesh()
+    written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
     assert not mesh.is_empty
+    assert written == output_path
     assert output_path.exists()
 
 
 def test_graded_schwarz_p(tmp_path):
     """Generates an affine-graded Schwarz P block."""
-    output_name = tmp_path / "graded_schwarz_p"
     output_path = tmp_path / "graded_schwarz_p.stl"
 
     config = GeneratorConfig(
@@ -41,17 +41,18 @@ def test_graded_schwarz_p(tmp_path):
         params={"a": 0.2, "bx": (0.8 - 0.2) / 50.0, "by": 0.0, "bz": 0.0},
     )
 
-    gen = TPMSGenerator(config, thickness=grading_spec, output_name=str(output_name))
-    mesh = gen.run()
+    gen = TPMSGenerator(config, thickness=grading_spec)
+    mesh = gen.generate_mesh()
+    written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
     assert not mesh.is_empty
+    assert written == output_path
     assert output_path.exists()
 
 
 def test_lidinoid_with_target(tmp_path):
     """Generates a Lidinoid pattern and checks target intersection handling."""
-    output_name = tmp_path / "lidinoid_mesh"
     output_path = tmp_path / "lidinoid_mesh.stl"
 
     dummy_target = tmp_path / "dummy_target.stl"
@@ -67,19 +68,18 @@ def test_lidinoid_with_target(tmp_path):
         config,
         thickness=0.5,
         target_geometry=str(dummy_target),
-        output_name=str(output_name),
     )
-    mesh = gen.run()
+    mesh = gen.generate_mesh()
+    written = gen.export(mesh, output_path)
 
     assert isinstance(mesh, trimesh.Trimesh)
     assert not mesh.is_empty
+    assert written == output_path
     assert output_path.exists()
 
 
 def test_grading_spec_radial(tmp_path):
     """Test passing a radial grading spec."""
-    output_name = tmp_path / "custom_grading"
-
     config = GeneratorConfig(
         tpms=TPMSParams(type=TPMSType.GYROID, cell_size=10.0, resolution=20),
         domain=DomainConfig(length=20, width=20, height=20),
@@ -95,8 +95,8 @@ def test_grading_spec_radial(tmp_path):
         },
     )
 
-    gen = TPMSGenerator(config, thickness=custom_grading, output_name=str(output_name))
-    mesh = gen.run()
+    gen = TPMSGenerator(config, thickness=custom_grading)
+    mesh = gen.generate_mesh()
 
     assert isinstance(mesh, trimesh.Trimesh)
     assert not mesh.is_empty
