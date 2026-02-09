@@ -18,6 +18,7 @@ dependencies = [
     "beautifulsoup4",
     "pyparsing",
     "lxml",
+    "pydantic"
 ]
 
 [project.optional-dependencies]
