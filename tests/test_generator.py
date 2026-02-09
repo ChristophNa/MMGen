@@ -77,7 +77,9 @@ def _assert_mesh_and_metadata(mesh: trimesh.Trimesh, metadata: MeshQualityMetada
                 params={
                     "t_center": 0.2,
                     "t_outer": 0.8,
-                    "center": (10, 10, 10),
+                    "center_x": 10.0,
+                    "center_y": 10.0,
+                    "center_z": 10.0,
                     "radius": 10.0,
                 },
             ),
@@ -206,15 +208,22 @@ def test_grading_spec_radial_requires_positive_radius():
     with pytest.raises(ValidationError):
         GradingSpec(
             kind="radial",
-            params={"t_center": 0.2, "t_outer": 0.8, "center": (0, 0, 0), "radius": 0.0},
+            params={
+                "t_center": 0.2,
+                "t_outer": 0.8,
+                "center_x": 0.0,
+                "center_y": 0.0,
+                "center_z": 0.0,
+                "radius": 0.0,
+            },
         )
 
 
-def test_grading_spec_radial_center_must_be_3d():
+def test_grading_spec_radial_rejects_legacy_center_tuple_param():
     with pytest.raises(ValidationError):
         GradingSpec(
             kind="radial",
-            params={"t_center": 0.2, "t_outer": 0.8, "center": (0, 0), "radius": 1.0},
+            params={"t_center": 0.2, "t_outer": 0.8, "center": 0.0, "radius": 1.0},
         )
 
 

@@ -1,6 +1,6 @@
 """Thickness grading specifications and evaluators."""
 
-from typing import Any, Callable, Literal
+from typing import Callable, Literal
 
 import numpy as np
 from pydantic import BaseModel, Field, model_validator
@@ -17,7 +17,7 @@ class GradingSpec(BaseModel):
     ----------
     kind : {"constant", "affine", "radial"}
         Grading model family.
-    params : dict[str, Any]
+    params : dict[str, float]
         Model-specific parameters validated according to ``kind``.
 
     Notes
@@ -33,11 +33,11 @@ class GradingSpec(BaseModel):
 
     ``radial``
         Required: ``radius``, ``t_center``, ``t_outer``.
-        Optional: ``center`` (defaults to ``(0.0, 0.0, 0.0)``).
+        Optional: ``center_x``, ``center_y``, ``center_z`` (each defaults to ``0.0``).
     """
 
     kind: Literal["constant", "affine", "radial"]
-    params: dict[str, Any] = Field(default_factory=dict)
+    params: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_params(self) -> "GradingSpec":
@@ -61,7 +61,6 @@ class GradingSpec(BaseModel):
             self._reject_unknown_params(p, allowed, k)
             if "t" not in p:
                 raise ValueError("constant grading requires params['t']")
-            p["t"] = self._as_float(p["t"], "t")
             self.params = p
             return self
 
@@ -69,14 +68,6 @@ class GradingSpec(BaseModel):
             allowed = {"a", "bx", "by", "bz", "tmin", "tmax"}
             self._reject_unknown_params(p, allowed, k)
 
-            for key in ("a", "bx", "by", "bz"):
-                if key in p:
-                    p[key] = self._as_float(p[key], key)
-
-            if "tmin" in p:
-                p["tmin"] = self._as_float(p["tmin"], "tmin")
-            if "tmax" in p:
-                p["tmax"] = self._as_float(p["tmax"], "tmax")
             if "tmin" in p and "tmax" in p and p["tmin"] > p["tmax"]:
                 raise ValueError("affine grading requires tmin <= tmax")
 
@@ -84,21 +75,19 @@ class GradingSpec(BaseModel):
             return self
 
         if k == "radial":
-            allowed = {"center", "radius", "t_center", "t_outer"}
+            allowed = {"center_x", "center_y", "center_z", "radius", "t_center", "t_outer"}
             self._reject_unknown_params(p, allowed, k)
 
             for key in ("radius", "t_center", "t_outer"):
                 if key not in p:
                     raise ValueError(f"radial grading requires params['{key}']")
-                p[key] = self._as_float(p[key], key)
 
             if p["radius"] <= 0.0:
                 raise ValueError("radial grading requires radius > 0")
 
-            center = p.get("center", (0.0, 0.0, 0.0))
-            if not isinstance(center, (list, tuple)) or len(center) != 3:
-                raise ValueError("radial grading center must be a 3-element list or tuple")
-            p["center"] = tuple(self._as_float(v, "center") for v in center)
+            p["center_x"] = p.get("center_x", 0.0)
+            p["center_y"] = p.get("center_y", 0.0)
+            p["center_z"] = p.get("center_z", 0.0)
 
             self.params = p
             return self
@@ -106,12 +95,12 @@ class GradingSpec(BaseModel):
         return self
 
     @staticmethod
-    def _reject_unknown_params(params: dict[str, Any], allowed: set[str], kind: str) -> None:
+    def _reject_unknown_params(params: dict[str, float], allowed: set[str], kind: str) -> None:
         """Raise when unknown keys are found for the selected grading kind.
 
         Parameters
         ----------
-        params : dict[str, Any]
+        params : dict[str, float]
             User-provided parameter dictionary.
         allowed : set[str]
             Allowed keys for the grading kind.
@@ -128,33 +117,6 @@ class GradingSpec(BaseModel):
             raise ValueError(
                 f"Unknown params for kind '{kind}': {sorted(unknown)}; allowed: {sorted(allowed)}"
             )
-
-    @staticmethod
-    def _as_float(value: Any, name: str) -> float:
-        """Convert a value to ``float`` with a consistent validation error.
-
-        Parameters
-        ----------
-        value : Any
-            Value to convert.
-        name : str
-            Parameter name for diagnostics.
-
-        Returns
-        -------
-        float
-            Converted float value.
-
-        Raises
-        ------
-        ValueError
-            If conversion fails.
-        """
-        try:
-            return float(value)
-        except (TypeError, ValueError) as e:
-            raise ValueError(f"'{name}' must be numeric") from e
-
 
 def grading_from_spec(spec: GradingSpec) -> GradingFunc:
     """Build a vectorized thickness function from a grading specification.
@@ -187,7 +149,7 @@ def grading_from_spec(spec: GradingSpec) -> GradingFunc:
 
     ``radial``
         Interpolates from ``t_center`` to ``t_outer`` based on normalized
-        distance from ``center``, saturated at ``radius``.
+        distance from ``(center_x, center_y, center_z)``, saturated at ``radius``.
     """
     k = spec.kind
     p = spec.params
@@ -218,7 +180,14 @@ def grading_from_spec(spec: GradingSpec) -> GradingFunc:
 
     if k == "radial":
         # t = t_center + (t_outer - t_center) * clamp(r/R, 0..1)
-        center = np.array(p.get("center", (0.0, 0.0, 0.0)), dtype=float)
+        center = np.array(
+            [
+                float(p.get("center_x", 0.0)),
+                float(p.get("center_y", 0.0)),
+                float(p.get("center_z", 0.0)),
+            ],
+            dtype=float,
+        )
         radius = float(p["radius"])
         t_center = float(p["t_center"])
         t_outer = float(p["t_outer"])

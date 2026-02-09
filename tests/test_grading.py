@@ -36,7 +36,14 @@ def test_grading_from_spec_affine_applies_coefficients_and_clamping():
 def test_grading_from_spec_radial_interpolates_and_saturates_at_radius():
     spec = GradingSpec(
         kind="radial",
-        params={"center": (0.0, 0.0, 0.0), "radius": 2.0, "t_center": 0.2, "t_outer": 0.8},
+        params={
+            "center_x": 0.0,
+            "center_y": 0.0,
+            "center_z": 0.0,
+            "radius": 2.0,
+            "t_center": 0.2,
+            "t_outer": 0.8,
+        },
     )
     points = np.array(
         [
